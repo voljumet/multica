@@ -172,6 +172,12 @@ export type {
   ConnectVCSResponse,
 } from "./vcs";
 export type {
+  GitLabMRState,
+  GitLabConnection,
+  GitLabMergeRequest,
+  ListGitLabConnectionsResponse,
+} from "./gitlab";
+export type {
   LarkInstallation,
   ListLarkInstallationsResponse,
   BeginLarkInstallResponse,
