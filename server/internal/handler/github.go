@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -576,25 +575,6 @@ func (h *Handler) ListPullRequestsForIssue(w http.ResponseWriter, r *http.Reques
 
 // ── Webhook ─────────────────────────────────────────────────────────────────
 
-// identifierRe extracts identifiers like "MUL-1510" from text. Case-insensitive
-// because branch names are conventionally lowercase but issue prefixes are
-// uppercase. Word boundary on the left prevents matching inside email-style
-// strings (e.g. "abc@MUL-1") and the digit anchor on the right rules out
-// version numbers like "v1.2-3".
-var identifierRe = regexp.MustCompile(`(?i)\b([a-z][a-z0-9]{1,9})-(\d+)\b`)
-
-// closingIdentifierRe extracts identifiers that appear immediately after a
-// GitHub-style closing keyword ("close[sd]?", "fix(e[sd])?", "resolve[sd]?"),
-// optionally separated by a colon and whitespace. Matching is intentionally
-// strict on adjacency — "Fix MUL-1" closes MUL-1, but "Fix login MUL-1"
-// does not. This mirrors GitHub's own closing-keyword grammar and is the
-// gate the webhook uses to decide whether to auto-advance an issue to
-// `done` after a PR merges. References like "Follow up in MUL-2" and bare
-// title prefixes like "MUL-1: ..." link the PR (via identifierRe) but
-// never auto-close.
-var closingIdentifierRe = regexp.MustCompile(
-	`(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[:\s]+([a-z][a-z0-9]{1,9})-(\d+)\b`,
-)
 
 // HandleGitHubWebhook (POST /api/webhooks/github) is GitHub's destination for
 // every event from a connected installation. We verify HMAC signature, route
@@ -1307,6 +1287,92 @@ func extractClosingIdentifiers(parts ...string) []string {
 	}
 	return out
 }
+const githubWebhookHost = "github.com"
+
+// resolveWorkspaceForRepo routes a delivery to the workspace whose repos
+// registry owns github.com/owner/name, so one installation can serve repos in
+// several workspaces; falls back to the installation workspace when unmatched.
+// The registry is admin-editable, so it overrides the verified installation
+// binding only when owner == the delivering account (accountLogin) and the host
+// matches — no cross-account capture. On ties the installation's own workspace
+// wins, else the lowest id (query is ORDER BY id).
+func (h *Handler) resolveWorkspaceForRepo(ctx context.Context, fallback pgtype.UUID, accountLogin, owner, name string) pgtype.UUID {
+	owner = strings.TrimSpace(owner)
+	name = strings.TrimSpace(name)
+	if owner == "" || name == "" {
+		return fallback
+	}
+	// Only the delivering account's repos may be re-routed by the registry.
+	if !strings.EqualFold(strings.TrimSpace(accountLogin), owner) {
+		return fallback
+	}
+	target := githubWebhookHost + "/" + strings.ToLower(owner) + "/" + strings.ToLower(name)
+	rows, err := h.Queries.ListWorkspacesWithRepos(ctx)
+	if err != nil {
+		slog.Warn("github: list workspaces with repos failed", "err", err)
+		return fallback
+	}
+	matches := make([]pgtype.UUID, 0, 1)
+	for _, row := range rows {
+		var repos []struct {
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(row.Repos, &repos); err != nil {
+			continue
+		}
+		for _, rp := range repos {
+			if repoIdentityFromURL(rp.URL) == target {
+				matches = append(matches, row.ID)
+				break
+			}
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return fallback
+	case 1:
+		return matches[0]
+	default:
+		for _, m := range matches {
+			if m == fallback {
+				return m
+			}
+		}
+		return matches[0]
+	}
+}
+
+// repoIdentityFromURL returns lowercased "host/owner/name" from an https, scp
+// ssh (git@host:owner/name) or ssh:// git URL, or "" if it can't.
+func repoIdentityFromURL(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if s == "" {
+		return ""
+	}
+	// Trim trailing slashes before ".git" so "…/foo.git/" resolves.
+	s = strings.TrimRight(s, "/")
+	s = strings.TrimSuffix(s, ".git")
+	s = strings.TrimRight(s, "/")
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.Index(s, "@"); i >= 0 {
+		s = s[i+1:]
+	}
+	// Fold scp-like "host:owner/name" into a path so one split handles all forms.
+	s = strings.ReplaceAll(s, ":", "/")
+	segments := make([]string, 0, 4)
+	for _, seg := range strings.Split(s, "/") {
+		if seg != "" {
+			segments = append(segments, seg)
+		}
+	}
+	if len(segments) < 3 {
+		return ""
+	}
+	return segments[0] + "/" + segments[len(segments)-2] + "/" + segments[len(segments)-1]
+}
+
 
 // lookupIssueByIdentifier looks up an issue in the given workspace by its
 // "PREFIX-NUMBER" identifier. Returns the row + true if the prefix matches
