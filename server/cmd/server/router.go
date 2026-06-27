@@ -622,14 +622,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 						slog.Error("composio: service init failed; composio integration disabled", "error", serr)
 					} else {
 						h.Composio = svc
-						// Stage 3 (MUL-3721) hook: feed the per-task MCP
-						// overlay builder into TaskService so every Enqueue*
-						// path attaches the initiator user's Composio session
-						// URL to the task row before the daemon claims it.
-						// taskSvc already exists by this point — it was
-						// constructed inside NewHandler — and exposes its
-						// Composio field for exactly this kind of late wiring,
-						// so no Handler-level mutation is needed.
 						if h.TaskService != nil {
 							h.TaskService.Composio = svc
 						}
@@ -656,6 +648,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		}
 	} else {
 		slog.Info("vcs integration disabled (MULTICA_VCS_SECRET_KEY not set)")
+	}
+
+	// GitLab integration token encryption. ponytail: kept alongside VCSSecretBox
+	// until GitLab handlers are ported to use h.VCSSecretBox.
+	if gitlabKey, err := secretbox.LoadKey("GITLAB_SECRET_KEY"); err == nil {
+		box, err := secretbox.New(gitlabKey)
+		if err != nil {
+			slog.Error("gitlab: secretbox.New failed; GitLab OAuth disabled", "error", err)
+		} else {
+			h.GitLabBox = box
+			slog.Info("gitlab integration enabled")
+		}
 	}
 
 	if opts.HeartbeatScheduler != nil {
@@ -820,6 +824,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// the connection id in the path selects the workspace, provider, and
 	// decryption secret.
 	r.Post("/api/webhooks/vcs/{connectionId}", h.HandleVCSWebhook)
+	// GitLab OAuth callback (no Multica auth — browser redirect from GitLab).
+	r.Get("/api/gitlab/setup", h.GitLabSetupCallback)
 	// Stripe webhook (no Multica auth — Stripe signs the raw body
 	// with a shared secret, the multica-cloud upstream verifies. We
 	// only forward the bytes + the Stripe-Signature header; see
@@ -987,6 +993,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Post("/vcs/connections", h.ConnectVCS)
 					r.Post("/vcs/connections/{connectionId}/rotate-webhook", h.RotateVCSConnectionWebhook)
 					r.Delete("/vcs/connections/{connectionId}", h.DeleteVCSConnection)
+				})
+
+				// GitLab integration — listing is member-visible; connect/disconnect
+				// require admin.
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceMemberFromURL(queries, "id"))
+					r.Get("/gitlab/connections", h.ListGitLabConnections)
+				})
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
+					r.Get("/gitlab/connect", h.GitLabConnect)
+					r.Delete("/gitlab/connections/{connectionId}", h.DeleteGitLabConnection)
 				})
 
 				// Lark integration. Every endpoint here only requires
@@ -1168,6 +1186,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Put("/properties/{propertyId}", h.SetIssueProperty)
 					r.Delete("/properties/{propertyId}", h.DeleteIssueProperty)
 					r.Get("/pull-requests", h.ListPullRequestsForIssue)
+					r.Get("/merge-requests", h.ListMergeRequestsForIssue)
 				})
 			})
 
