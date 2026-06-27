@@ -435,6 +435,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		slog.Info("slack integration disabled (MULTICA_SLACK_SECRET_KEY not set)")
 	}
 
+	// GitLab integration token encryption. Nil when GITLAB_SECRET_KEY is unset;
+	// the GitLab OAuth handlers return a clear error in that case.
+	if gitlabKey, err := secretbox.LoadKey("GITLAB_SECRET_KEY"); err == nil {
+		box, err := secretbox.New(gitlabKey)
+		if err != nil {
+			slog.Error("gitlab: secretbox.New failed; GitLab OAuth disabled", "error", err)
+		} else {
+			h.GitLabBox = box
+			slog.Info("gitlab integration enabled")
+		}
+	}
+
 	if opts.HeartbeatScheduler != nil {
 		h.HeartbeatScheduler = opts.HeartbeatScheduler
 	}
@@ -562,6 +574,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// HMAC-SHA256 signature in the handler) and post-install setup callback.
 	r.Post("/api/webhooks/github", h.HandleGitHubWebhook)
 	r.Get("/api/github/setup", h.GitHubSetupCallback)
+	// GitLab webhook (no Multica auth — authenticated via X-Gitlab-Token
+	// shared secret) and OAuth callback.
+	r.Post("/api/webhooks/gitlab", h.HandleGitLabWebhook)
+	r.Get("/api/gitlab/setup", h.GitLabSetupCallback)
 	// Stripe webhook (no Multica auth — Stripe signs the raw body
 	// with a shared secret, the multica-cloud upstream verifies. We
 	// only forward the bytes + the Stripe-Signature header; see
@@ -693,6 +709,18 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/github/installations/{installationId}", h.DeleteGitHubInstallation)
 				})
 
+				// GitLab integration — listing is member-visible; connect/disconnect
+				// require admin.
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceMemberFromURL(queries, "id"))
+					r.Get("/gitlab/connections", h.ListGitLabConnections)
+				})
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
+					r.Get("/gitlab/connect", h.GitLabConnect)
+					r.Delete("/gitlab/connections/{connectionId}", h.DeleteGitLabConnection)
+				})
+
 				// Lark integration. Listing is member-visible (same
 				// rationale as GitHub: the Integrations tab must
 				// render for non-admins so they see "wired up by whom").
@@ -821,6 +849,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Put("/metadata/{key}", h.SetIssueMetadataKey)
 					r.Delete("/metadata/{key}", h.DeleteIssueMetadataKey)
 					r.Get("/pull-requests", h.ListPullRequestsForIssue)
+					r.Get("/merge-requests", h.ListMergeRequestsForIssue)
 				})
 			})
 

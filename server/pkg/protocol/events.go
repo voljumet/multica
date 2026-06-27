@@ -134,4 +134,9 @@ const (
 	// deleting the row; the audit trail is preserved.
 	EventLarkInstallationCreated = "lark_installation:created"
 	EventLarkInstallationRevoked = "lark_installation:revoked"
+
+	// GitLab integration events.
+	EventGitLabConnectionCreated   = "gitlab_connection:created"
+	EventGitLabConnectionDeleted   = "gitlab_connection:deleted"
+	EventGitLabMergeRequestUpdated = "gitlab_merge_request:updated"
 )
