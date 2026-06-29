@@ -54,6 +54,7 @@ services:
 
   backend:
     image: ${MULTICA_BACKEND_IMAGE:-ghcr.io/multica-ai/multica-backend}:${MULTICA_IMAGE_TAG:-latest}
+    pull_policy: ${MULTICA_PULL_POLICY:-missing}
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,10 +141,17 @@ services:
       MULTICA_VCS_INTEGRATION_ENABLED: ${MULTICA_VCS_INTEGRATION_ENABLED:-true}
       # VCS integration at-rest encryption key for token-based providers
       MULTICA_VCS_SECRET_KEY: ${MULTICA_VCS_SECRET_KEY:-}
+      # GitLab OAuth integration (legacy)
+      GITLAB_URL: ${GITLAB_URL:-}
+      GITLAB_APP_ID: ${GITLAB_APP_ID:-}
+      GITLAB_APP_SECRET: ${GITLAB_APP_SECRET:-}
+      GITLAB_WEBHOOK_SECRET: ${GITLAB_WEBHOOK_SECRET:-}
+      GITLAB_SECRET_KEY: ${GITLAB_SECRET_KEY:-}
     restart: unless-stopped
 
   frontend:
     image: ${MULTICA_WEB_IMAGE:-ghcr.io/multica-ai/multica-web}:${MULTICA_IMAGE_TAG:-latest}
+    pull_policy: ${MULTICA_PULL_POLICY:-missing}
     depends_on:
       - backend
     ports:

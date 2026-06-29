@@ -375,6 +375,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 	}
 	h.PRRefresh = ghsnapshot.NewManager(ghClient, queries, txStarter, h.broadcastPRSnapshotApplied)
 
+	taskSvc.PostCommentToGitLab = h.postCommentToGitLab
 	return h
 }
 

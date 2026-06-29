@@ -149,6 +149,7 @@ import type {
   ConnectVCSRequest,
   ConnectVCSResponse,
   GitLabMergeRequest,
+  GitLabIssue,
   ListGitLabConnectionsResponse,
   ListLarkInstallationsResponse,
   BeginLarkInstallResponse,
@@ -3287,6 +3288,10 @@ export class ApiClient {
 
   async listIssueMergeRequests(issueId: string): Promise<{ merge_requests: GitLabMergeRequest[] }> {
     return this.fetch(`/api/issues/${issueId}/merge-requests`);
+  }
+
+  async getGitLabIssue(issueId: string): Promise<GitLabIssue> {
+    return this.fetch(`/api/issues/${issueId}/gitlab-issue`);
   }
 
   // Lark integration

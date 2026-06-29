@@ -1914,6 +1914,9 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	// success instead of a silent no-op (MUL-4525 §2).
 	resp.TriggerOutcomes = h.triggerTasksForComment(r.Context(), issue, comment, parentComment, authorType, authorID, originatorUserID, delegationAuthority, suppressAgentIDs)
 
+	// Post comment to GitLab if the issue is synced — fire and forget.
+	go h.postCommentToGitLab(context.Background(), comment, issue)
+
 	writeJSON(w, http.StatusCreated, resp)
 }
 

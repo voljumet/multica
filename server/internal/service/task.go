@@ -70,6 +70,10 @@ type TaskService struct {
 	// shedding everything.
 	quickActionsInFlight sync.Map
 	quickActionsRunning  atomic.Int64
+	// PostCommentToGitLab relays a newly-created comment to the linked GitLab
+	// issue when the issue is synced. Injected by handler.New; nil when GitLab
+	// is not configured or the issue is not synced.
+	PostCommentToGitLab func(ctx context.Context, comment db.Comment, issue db.Issue)
 
 	analyticsContextMu    sync.Mutex
 	analyticsContextCache map[string]analytics.TaskContext
@@ -4867,6 +4871,10 @@ func (s *TaskService) createAgentComment(ctx context.Context, issueID, agentID p
 		},
 	})
 	s.AutoUnresolveThreadOnReply(ctx, rootComment, util.UUIDToString(issue.WorkspaceID), "agent", util.UUIDToString(agentID))
+
+	if s.PostCommentToGitLab != nil {
+		go s.PostCommentToGitLab(context.Background(), comment, issue)
+	}
 }
 
 // AutoUnresolveThreadOnReply clears resolved_at on the thread root when a

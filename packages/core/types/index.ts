@@ -175,6 +175,7 @@ export type {
   GitLabMRState,
   GitLabConnection,
   GitLabMergeRequest,
+  GitLabIssue,
   ListGitLabConnectionsResponse,
 } from "./gitlab";
 export type {
