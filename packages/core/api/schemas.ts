@@ -361,9 +361,6 @@ export interface AppConfigResponse {
   vcs_integration_available?: boolean;
   feature_flags?: Record<string, boolean>;
   server_version?: string;
-  // True when the server has GitLab OAuth configured. Older servers omit the
-  // field; treat that as false so the login button stays hidden by default.
-  gitlab_enabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
