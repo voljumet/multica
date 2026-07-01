@@ -64,10 +64,10 @@ func briefFlags() *featureflag.Service {
 // once we plumb workspace id through TaskContextForEnv — out of scope for
 // the initial rollout).
 //
-// Default is `false` everywhere except where a Provider explicitly returns
-// true. Production has no provider rule → false → legacy. Staging YAML sets
-// `runtime_brief_slim.default: true` → true → slim. Ops can override per
-// process with `FF_RUNTIME_BRIEF_SLIM=true`.
+// Default is `true` everywhere unless a Provider explicitly returns false.
+// Production uses the package default → slim. Staging YAML can override.
+// Ops can force legacy per process with `FF_RUNTIME_BRIEF_SLIM=false`
+// (EnvProvider) without a redeploy.
 func useSlimBrief() bool {
 	return briefFlags().IsEnabled(context.Background(), runtimeBriefSlimFlag, true)
 }

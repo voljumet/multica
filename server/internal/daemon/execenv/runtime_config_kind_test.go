@@ -274,13 +274,9 @@ func TestSlimBriefIsSubstantiallyShorter(t *testing.T) {
 		},
 	}
 
-	saved := runtimeFlags.Load()
-	t.Cleanup(func() { runtimeFlags.Store(saved) })
-
 	withLegacyBrief(t)
 	legacy := buildMetaSkillContent("claude", ctx)
 
-	runtimeFlags.Store(saved)
 	withSlimBrief(t)
 	slim := buildMetaSkillContent("claude", ctx)
 
