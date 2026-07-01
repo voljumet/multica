@@ -7,6 +7,7 @@ import {
   Cpu,
   Globe,
   Lock,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -535,15 +536,18 @@ function DiagnosticsCard({
   );
 }
 
-// VisibilityReadout renders a static "Private" / "Public" pill for users
-// who can't edit the runtime. The description used to sit under the chip;
-// it now lives in the hover tooltip so the Diagnostics column stays compact
-// and matches the surrounding sections. Older backends that omit the field
-// render as "Private" to match the strict default.
+// VisibilityReadout renders a static "Private" / "Public" / "Shared" pill for
+// users who can't edit the runtime. Older backends that omit the field render
+// as "Private" to match the strict default.
 function VisibilityReadout({ runtime }: { runtime: AgentRuntime }) {
   const { t } = useT("runtimes");
-  const visibility = runtime.visibility === "public" ? "public" : "private";
-  const Icon = visibility === "public" ? Globe : Lock;
+  const visibility =
+    runtime.visibility === "public"
+      ? "public"
+      : runtime.visibility === "shared"
+        ? "shared"
+        : "private";
+  const Icon = visibility === "public" ? Globe : visibility === "shared" ? Share2 : Lock;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -563,18 +567,20 @@ function VisibilityReadout({ runtime }: { runtime: AgentRuntime }) {
   );
 }
 
-// VisibilityEditor lets the runtime owner (or workspace admin) flip
-// public↔private. The PATCH endpoint also re-checks; this is a UI gate, not
-// a security boundary. Per-choice description text lives in the hover
-// tooltip so the two buttons stay a tight icon+label pair instead of the
-// previous two-line block that competed with the surrounding cards.
+// VisibilityEditor lets the runtime owner (or workspace admin) cycle between
+// private / public / shared. The PATCH endpoint re-checks; this is a UI gate.
 function VisibilityEditor({ runtime }: { runtime: AgentRuntime }) {
   const { t } = useT("runtimes");
   const wsId = useWorkspaceId();
   const updateRuntime = useUpdateRuntime(wsId);
-  const current = runtime.visibility === "public" ? "public" : "private";
+  const current =
+    runtime.visibility === "public"
+      ? "public"
+      : runtime.visibility === "shared"
+        ? "shared"
+        : "private";
 
-  const flip = (next: "private" | "public") => {
+  const flip = (next: "private" | "public" | "shared") => {
     if (next === current) return;
     updateRuntime.mutate(
       { runtimeId: runtime.id, patch: { visibility: next } },
@@ -612,6 +618,14 @@ function VisibilityEditor({ runtime }: { runtime: AgentRuntime }) {
         tooltip={t(($) => $.detail.visibility_hint.public)}
         disabled={updateRuntime.isPending}
         onClick={() => flip("public")}
+      />
+      <VisibilityChoice
+        active={current === "shared"}
+        icon={<Share2 className="h-3 w-3" />}
+        label={t(($) => $.detail.visibility_label.shared)}
+        tooltip={t(($) => $.detail.visibility_hint.shared)}
+        disabled={updateRuntime.isPending}
+        onClick={() => flip("shared")}
       />
     </div>
   );

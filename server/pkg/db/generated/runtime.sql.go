@@ -370,6 +370,43 @@ func (q *Queries) ForceOfflineRuntimesByIDs(ctx context.Context, runtimeIds []pg
 	return items, nil
 }
 
+const getAccessibleRuntimeForAgent = `-- name: GetAccessibleRuntimeForAgent :one
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id FROM agent_runtime
+WHERE id = $1
+  AND (workspace_id = $2 OR visibility = 'shared')
+`
+
+type GetAccessibleRuntimeForAgentParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// Returns a runtime if it belongs to the given workspace OR has visibility='shared'
+// (globally available across workspaces). Used when binding an agent to a runtime.
+func (q *Queries) GetAccessibleRuntimeForAgent(ctx context.Context, arg GetAccessibleRuntimeForAgentParams) (AgentRuntime, error) {
+	row := q.db.QueryRow(ctx, getAccessibleRuntimeForAgent, arg.ID, arg.WorkspaceID)
+	var i AgentRuntime
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.DaemonID,
+		&i.Name,
+		&i.RuntimeMode,
+		&i.Provider,
+		&i.Status,
+		&i.DeviceInfo,
+		&i.Metadata,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OwnerID,
+		&i.LegacyDaemonID,
+		&i.Visibility,
+		&i.ProfileID,
+	)
+	return i, err
+}
+
 const getAgentRuntime = `-- name: GetAgentRuntime :one
 SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id FROM agent_runtime
 WHERE id = $1
@@ -544,6 +581,50 @@ func (q *Queries) ListArchivedAgentIDsByRuntime(ctx context.Context, runtimeID p
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSharedRuntimes = `-- name: ListSharedRuntimes :many
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id FROM agent_runtime
+WHERE visibility = 'shared'
+ORDER BY name
+`
+
+// All runtimes marked as globally shared, for display in cross-workspace runtime pickers.
+func (q *Queries) ListSharedRuntimes(ctx context.Context) ([]AgentRuntime, error) {
+	rows, err := q.db.Query(ctx, listSharedRuntimes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AgentRuntime{}
+	for rows.Next() {
+		var i AgentRuntime
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.DaemonID,
+			&i.Name,
+			&i.RuntimeMode,
+			&i.Provider,
+			&i.Status,
+			&i.DeviceInfo,
+			&i.Metadata,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnerID,
+			&i.LegacyDaemonID,
+			&i.Visibility,
+			&i.ProfileID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

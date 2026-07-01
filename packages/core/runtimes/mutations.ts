@@ -52,10 +52,12 @@ export function useUpdateRuntime(wsId: string) {
       patch,
     }: {
       runtimeId: string;
-      patch: { visibility?: "private" | "public" };
+      patch: { visibility?: "private" | "public" | "shared" };
     }) => api.updateRuntime(runtimeId, patch),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
+      // 'shared' status change affects the global shared list too.
+      qc.invalidateQueries({ queryKey: ["runtimes", "shared"] });
     },
   });
 }

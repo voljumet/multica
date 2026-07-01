@@ -102,11 +102,13 @@
     "diagnostics_visibility": "Visibility",
     "visibility_label": {
       "private": "Private",
-      "public": "Public"
+      "public": "Public",
+      "shared": "Shared"
     },
     "visibility_hint": {
       "private": "Only you and workspace admins can create agents on this runtime.",
-      "public": "Any workspace member can create agents on this runtime."
+      "public": "Any workspace member can create agents on this runtime.",
+      "shared": "Any workspace can bind agents to this runtime across your organization."
     },
     "visibility_toast_updated": "Visibility set to {{visibility}}",
     "visibility_toast_failed": "Failed to update visibility",

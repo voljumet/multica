@@ -29,6 +29,19 @@ FOR UPDATE;
 SELECT * FROM agent_runtime
 WHERE id = $1 AND workspace_id = $2;
 
+-- name: GetAccessibleRuntimeForAgent :one
+-- Returns a runtime if it belongs to the given workspace OR has visibility='shared'
+-- (globally available across workspaces). Used when binding an agent to a runtime.
+SELECT * FROM agent_runtime
+WHERE id = @id
+  AND (workspace_id = @workspace_id OR visibility = 'shared');
+
+-- name: ListSharedRuntimes :many
+-- All runtimes marked as globally shared, for display in cross-workspace runtime pickers.
+SELECT * FROM agent_runtime
+WHERE visibility = 'shared'
+ORDER BY name;
+
 -- name: UpsertAgentRuntime :one
 -- (xmax = 0) AS inserted distinguishes a fresh insert (true) from an upsert
 -- that updated an existing row (false). Analytics reads this to fire

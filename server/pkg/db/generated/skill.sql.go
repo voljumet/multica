@@ -27,6 +27,27 @@ func (q *Queries) AddAgentSkill(ctx context.Context, arg AddAgentSkillParams) er
 	return err
 }
 
+const copySkillFiles = `-- name: CopySkillFiles :exec
+INSERT INTO skill_file (skill_id, path, content)
+SELECT $1::uuid, path, content
+FROM skill_file
+WHERE skill_id = $2::uuid
+ON CONFLICT (skill_id, path) DO UPDATE SET content = EXCLUDED.content, updated_at = now()
+`
+
+type CopySkillFilesParams struct {
+	NewSkillID    pgtype.UUID `json:"new_skill_id"`
+	SourceSkillID pgtype.UUID `json:"source_skill_id"`
+}
+
+// Duplicates all skill_file rows from source_skill_id under new_skill_id.
+// ON CONFLICT allows re-running safely if the target skill already existed
+// and had the same files.
+func (q *Queries) CopySkillFiles(ctx context.Context, arg CopySkillFilesParams) error {
+	_, err := q.db.Exec(ctx, copySkillFiles, arg.NewSkillID, arg.SourceSkillID)
+	return err
+}
+
 const createSkill = `-- name: CreateSkill :one
 INSERT INTO skill (workspace_id, name, description, content, config, created_by)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -534,6 +555,54 @@ func (q *Queries) UpdateSkill(ctx context.Context, arg UpdateSkillParams) (Skill
 		arg.Description,
 		arg.Content,
 		arg.Config,
+	)
+	var i Skill
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Description,
+		&i.Content,
+		&i.Config,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertSkillByName = `-- name: UpsertSkillByName :one
+INSERT INTO skill (workspace_id, name, description, content, config, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (workspace_id, name) DO UPDATE
+    SET description = EXCLUDED.description,
+        content     = EXCLUDED.content,
+        config      = EXCLUDED.config,
+        updated_at  = now()
+RETURNING id, workspace_id, name, description, content, config, created_by, created_at, updated_at
+`
+
+type UpsertSkillByNameParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+	Content     string      `json:"content"`
+	Config      []byte      `json:"config"`
+	CreatedBy   pgtype.UUID `json:"created_by"`
+}
+
+// Find-or-create a skill by name in a workspace. Used when copying an agent:
+// if the target workspace already has a skill with the same name, reuse it;
+// otherwise insert a new one. The DO UPDATE touches updated_at so RETURNING
+// always gives a current row.
+func (q *Queries) UpsertSkillByName(ctx context.Context, arg UpsertSkillByNameParams) (Skill, error) {
+	row := q.db.QueryRow(ctx, upsertSkillByName,
+		arg.WorkspaceID,
+		arg.Name,
+		arg.Description,
+		arg.Content,
+		arg.Config,
+		arg.CreatedBy,
 	)
 	var i Skill
 	err := row.Scan(

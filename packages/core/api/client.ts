@@ -940,11 +940,25 @@ export class ApiClient {
     return this.fetch(`/api/agents/${id}/cancel-tasks`, { method: "POST" });
   }
 
+  async copyAgent(
+    id: string,
+    data: { target_workspace_slug: string; name?: string; target_runtime_id?: string },
+  ): Promise<Agent> {
+    return this.fetch(`/api/agents/${id}/copy`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   async listRuntimes(params?: { workspace_id?: string; owner?: "me" }): Promise<AgentRuntime[]> {
     const search = new URLSearchParams();
     if (params?.workspace_id) search.set("workspace_id", params.workspace_id);
     if (params?.owner) search.set("owner", params.owner);
     return this.fetch(`/api/runtimes?${search}`);
+  }
+
+  async listSharedRuntimes(): Promise<AgentRuntime[]> {
+    return this.fetch("/api/runtimes/shared");
   }
 
   async listCloudRuntimeNodes(
@@ -1143,7 +1157,7 @@ export class ApiClient {
 
   async updateRuntime(
     runtimeId: string,
-    patch: { visibility?: "private" | "public" },
+    patch: { visibility?: "private" | "public" | "shared" },
   ): Promise<AgentRuntime> {
     return this.fetch(`/api/runtimes/${runtimeId}`, {
       method: "PATCH",

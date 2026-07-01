@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Cloud, Lock, Monitor } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import type { AgentRuntime, MemberWithUser } from "@multica/core/types";
+import { sharedRuntimeListOptions } from "@multica/core/runtimes";
 import { ActorAvatar } from "../../../common/actor-avatar";
 import {
   PickerItem,
@@ -40,7 +42,18 @@ export function RuntimePicker({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>("mine");
 
-  const selected = runtimes.find((r) => r.id === value) ?? null;
+  // Cross-workspace shared runtimes from other workspaces.
+  const { data: allShared = [] } = useQuery(sharedRuntimeListOptions());
+  const ownRuntimeIds = useMemo(() => new Set(runtimes.map((r) => r.id)), [runtimes]);
+  const sharedRuntimes = useMemo(
+    () => allShared.filter((r) => !ownRuntimeIds.has(r.id)),
+    [allShared, ownRuntimeIds],
+  );
+
+  const selected =
+    runtimes.find((r) => r.id === value) ??
+    sharedRuntimes.find((r) => r.id === value) ??
+    null;
   const Icon = selected?.runtime_mode === "cloud" ? Cloud : Monitor;
 
   // Compute filtered list unconditionally — the early `!canEdit` return
@@ -48,7 +61,7 @@ export function RuntimePicker({
   const isDisabled = (r: AgentRuntime): boolean => {
     if (!currentUserId) return false;
     if (r.owner_id === currentUserId) return false;
-    return r.visibility !== "public";
+    return r.visibility !== "public" && r.visibility !== "shared";
   };
   const filtered = useMemo(() => {
     const list =
@@ -164,82 +177,97 @@ export function RuntimePicker({
           {t(($) => $.pickers.runtime_empty)}
         </p>
       ) : (
-        filtered.map((rt) => {
-          const owner = getOwner(rt.owner_id);
-          const rtOnline = rt.status === "online";
-          const locked = isDisabled(rt);
-          const tooltip = [
-            rt.name,
-            owner ? t(($) => $.pickers.runtime_owned_by, { name: owner.name }) : null,
-            rtOnline ? t(($) => $.pickers.runtime_online) : t(($) => $.pickers.runtime_offline),
-            locked ? t(($) => $.create_dialog.runtime_private_locked_tooltip) : null,
-          ]
-            .filter(Boolean)
-            .join(" · ");
-          return (
-            <PickerItem
+        filtered.map((rt) => <RuntimePickerItem key={rt.id} rt={rt} value={value} isDisabled={isDisabled} getOwner={getOwner} select={select} />)
+      )}
+      {sharedRuntimes.length > 0 && (
+        <>
+          <div className="mx-1 my-1 border-t" />
+          <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            From other workspaces
+          </p>
+          {sharedRuntimes.map((rt) => (
+            <RuntimePickerItem
               key={rt.id}
-              selected={rt.id === value}
-              disabled={locked}
-              onClick={() => {
-                if (locked) return;
-                void select(rt.id);
-              }}
-              tooltip={tooltip}
-            >
-              <ProviderLogo
-                provider={rt.provider}
-                className="h-4 w-4 shrink-0"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium">
-                    {rt.name}
-                  </span>
-                  {rt.runtime_mode === "cloud" && (
-                    <span className="shrink-0 rounded bg-info/10 px-1 text-[10px] font-medium text-info">
-                      {t(($) => $.create_dialog.runtime_cloud_badge)}
-                    </span>
-                  )}
-                  {locked && (
-                    <span className="shrink-0 inline-flex items-center gap-0.5 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground">
-                      <Lock className="h-2.5 w-2.5" />
-                      {t(($) => $.create_dialog.runtime_private_badge)}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  {owner && (
-                    <span className="flex min-w-0 items-center gap-1">
-                      <ActorAvatar
-                        actorType="member"
-                        actorId={owner.user_id}
-                        size={12}
-                      />
-                      <span className="truncate">{owner.name}</span>
-                    </span>
-                  )}
-                  {owner && rt.device_info && (
-                    <span className="text-muted-foreground/40">·</span>
-                  )}
-                  {rt.device_info && (
-                    <span className="truncate font-mono text-[10px]">
-                      {rt.device_info}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  rtOnline ? "bg-success" : "bg-muted-foreground/40"
-                }`}
-                aria-label={rtOnline ? t(($) => $.pickers.runtime_online) : t(($) => $.pickers.runtime_offline)}
-              />
-            </PickerItem>
-          );
-        })
+              rt={rt}
+              value={value}
+              isDisabled={isDisabled}
+              getOwner={() => null}
+              select={select}
+            />
+          ))}
+        </>
       )}
     </PropertyPicker>
+  );
+}
+
+function RuntimePickerItem({
+  rt,
+  value,
+  isDisabled,
+  getOwner,
+  select,
+}: {
+  rt: AgentRuntime;
+  value: string;
+  isDisabled: (r: AgentRuntime) => boolean;
+  getOwner: (id: string | null) => MemberWithUser | null;
+  select: (id: string) => Promise<void>;
+}) {
+  const { t } = useT("agents");
+  const owner = getOwner(rt.owner_id);
+  const rtOnline = rt.status === "online";
+  const locked = isDisabled(rt);
+  const tooltip = [
+    rt.name,
+    owner ? t(($) => $.pickers.runtime_owned_by, { name: owner.name }) : null,
+    rtOnline ? t(($) => $.pickers.runtime_online) : t(($) => $.pickers.runtime_offline),
+    locked ? t(($) => $.create_dialog.runtime_private_locked_tooltip) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <PickerItem
+      key={rt.id}
+      selected={rt.id === value}
+      disabled={locked}
+      onClick={() => { if (locked) return; void select(rt.id); }}
+      tooltip={tooltip}
+    >
+      <ProviderLogo provider={rt.provider} className="h-4 w-4 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{rt.name}</span>
+          {rt.runtime_mode === "cloud" && (
+            <span className="shrink-0 rounded bg-info/10 px-1 text-[10px] font-medium text-info">
+              {t(($: { create_dialog: { runtime_cloud_badge: string } }) => $.create_dialog.runtime_cloud_badge)}
+            </span>
+          )}
+          {locked && (
+            <span className="shrink-0 inline-flex items-center gap-0.5 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground">
+              <Lock className="h-2.5 w-2.5" />
+              {t(($: { create_dialog: { runtime_private_badge: string } }) => $.create_dialog.runtime_private_badge)}
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          {owner && (
+            <span className="flex min-w-0 items-center gap-1">
+              <ActorAvatar actorType="member" actorId={owner.user_id} size={12} />
+              <span className="truncate">{owner.name}</span>
+            </span>
+          )}
+          {owner && rt.device_info && <span className="text-muted-foreground/40">·</span>}
+          {rt.device_info && (
+            <span className="truncate font-mono text-[10px]">{rt.device_info}</span>
+          )}
+        </div>
+      </div>
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${rtOnline ? "bg-success" : "bg-muted-foreground/40"}`}
+        aria-label={rtOnline ? t(($: { pickers: { runtime_online: string } }) => $.pickers.runtime_online) : t(($: { pickers: { runtime_offline: string } }) => $.pickers.runtime_offline)}
+      />
+    </PickerItem>
   );
 }
 
