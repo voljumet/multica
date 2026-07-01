@@ -78,6 +78,9 @@ interface DesktopAPI {
       | "error";
     error?: string;
   }>;
+  /** Listen for Cmd+, shortcut requests from the main process to open settings.
+   *  Returns an unsubscribe function. */
+  onOpenSettings: (callback: () => void) => () => void;
   /** Listen for Cmd/Ctrl+W tab-close requests from the main process.
    *  Returns an unsubscribe function. */
   onCloseActiveTab: (callback: () => void) => () => void;
