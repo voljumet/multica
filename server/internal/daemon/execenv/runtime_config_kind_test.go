@@ -9,8 +9,8 @@ import (
 
 // withSlimBrief enables the `runtime_brief_slim` feature flag for the
 // duration of the test, then restores whatever provider was wired before.
-// Tests that exercise the slim path must call this; everything else gets
-// the default-off behaviour and exercises the legacy path.
+// Tests that exercise the legacy path must call withLegacyBrief instead;
+// everything else gets the default-slim behaviour.
 //
 // The helper is NOT t.Parallel-safe because runtimeFlags is a process-wide
 // atomic.Pointer. Tests that need the slim path stay serial. Hardly any

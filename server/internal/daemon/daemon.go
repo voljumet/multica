@@ -3575,7 +3575,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		TriggerThreadID:                  task.TriggerThreadID,
 		NewCommentCount:                  task.NewCommentCount,
 		NewCommentsSince:                 task.NewCommentsSince,
-		PriorSessionResumed:              task.PriorSessionID != "",
+		PriorSessionResumed:              task.TriggerCommentID == "" && task.PriorSessionID != "",
 		AgentID:                          agentID,
 		AgentName:                        agentName,
 		AgentInstructions:                instructions,
@@ -3975,7 +3975,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// Fallback: if session resume failed before establishing a session, retry
 	// with a fresh session. We check SessionID == "" to distinguish a resume
 	// failure (no session established) from a failure during actual execution.
-	if result.Status == "failed" && task.PriorSessionID != "" && result.SessionID == "" {
+	if result.Status == "failed" && execOpts.ResumeSessionID != "" && result.SessionID == "" {
 		firstUsage := result.Usage
 		taskLog.Warn("session resume failed, retrying with fresh session", "error", result.Error)
 		execOpts.ResumeSessionID = ""
