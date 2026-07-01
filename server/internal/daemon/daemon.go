@@ -3316,6 +3316,18 @@ func gateResumeToReusedWorkdir(task *Task, taskCtx *execenv.TaskContextForEnv, e
 	return reused
 }
 
+// commentTaskPriorSession returns the session ID to resume, dropping it
+// for comment-triggered tasks. Comment tasks re-read issue context and
+// history fresh via the multica CLI on every run; replaying prior
+// session history adds no new facts and accumulates unbounded input
+// tokens over back-and-forth comment cycles.
+func commentTaskPriorSession(triggerCommentID, priorSessionID string) string {
+	if triggerCommentID != "" {
+		return ""
+	}
+	return priorSessionID
+}
+
 func (d *Daemon) ensureTaskSkillBundles(ctx context.Context, task *Task) error {
 	if task == nil || task.Agent == nil || len(task.Agent.SkillRefs) == 0 {
 		return nil
@@ -3911,7 +3923,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		ThreadName:                deriveTaskThreadName(task),
 		Timeout:                   d.cfg.AgentTimeout,
 		SemanticInactivityTimeout: d.cfg.CodexSemanticInactivityTimeout,
-		ResumeSessionID:           task.PriorSessionID,
+		ResumeSessionID:           commentTaskPriorSession(task.TriggerCommentID, task.PriorSessionID),
 		ExtraArgs:                 extraArgs,
 		CustomArgs:                customArgs,
 		McpConfig:                 mcpConfig,
