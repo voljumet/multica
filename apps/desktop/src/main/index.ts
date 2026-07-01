@@ -233,6 +233,9 @@ function createWindow(): void {
     if (result === "close-tab") {
       event.preventDefault();
       window.webContents.send("tab:close-active");
+    } else if (result === "open-settings") {
+      event.preventDefault();
+      window.webContents.send("navigate:settings");
     } else if (result) {
       event.preventDefault();
     }

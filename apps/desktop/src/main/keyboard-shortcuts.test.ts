@@ -26,22 +26,21 @@ function key(
   };
 }
 
-describe("handleAppShortcut — reload blocking", () => {
-  it("swallows Cmd+R on macOS", () => {
+describe("handleAppShortcut — reload pass-through", () => {
+  it("passes Cmd+R through to Electron on macOS", () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("r", { meta: true }), wc, "darwin")).toBe(true);
-    expect(wc.setZoomLevel).not.toHaveBeenCalled();
+    expect(handleAppShortcut(key("r", { meta: true }), wc, "darwin")).toBe(false);
   });
 
-  it("swallows Ctrl+R on Linux/Windows", () => {
+  it("passes Ctrl+R through on Linux/Windows", () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("r", { control: true }), wc, "linux")).toBe(true);
-    expect(handleAppShortcut(key("R", { control: true }), wc, "win32")).toBe(true);
+    expect(handleAppShortcut(key("r", { control: true }), wc, "linux")).toBe(false);
+    expect(handleAppShortcut(key("R", { control: true }), wc, "win32")).toBe(false);
   });
 
-  it("swallows F5 regardless of modifier", () => {
+  it("passes F5 through", () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("F5"), wc, "darwin")).toBe(true);
+    expect(handleAppShortcut(key("F5"), wc, "darwin")).toBe(false);
   });
 
   it("ignores non-keyDown events", () => {
@@ -49,6 +48,24 @@ describe("handleAppShortcut — reload blocking", () => {
     expect(
       handleAppShortcut({ ...key("r", { meta: true }), type: "keyUp" }, wc, "darwin"),
     ).toBe(false);
+  });
+});
+
+describe("handleAppShortcut — open settings (Cmd/Ctrl+,)", () => {
+  it('returns "open-settings" on Cmd+, (macOS)', () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key(",", { meta: true }), wc, "darwin")).toBe("open-settings");
+  });
+
+  it('returns "open-settings" on Ctrl+, (Linux/Windows)', () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key(",", { control: true }), wc, "linux")).toBe("open-settings");
+    expect(handleAppShortcut(key(",", { control: true }), wc, "win32")).toBe("open-settings");
+  });
+
+  it("does not trigger without Cmd/Ctrl modifier", () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key(","), wc, "darwin")).toBe(false);
   });
 });
 
