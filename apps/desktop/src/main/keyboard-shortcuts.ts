@@ -42,8 +42,11 @@ const ZOOM_MAX = 4.5;
  * - `false`: not handled, let Electron continue
  * - `true`: handled (preventDefault), no further action
  * - `"close-tab"`: Cmd/Ctrl+W intercepted — caller should send IPC to renderer
+ * - `"open-settings"`: Cmd+, intercepted — caller should send IPC to renderer
+ * - `"reload"`: Cmd/Ctrl+R — caller should call webContents.reload()
+ * - `"force-reload"`: Cmd/Ctrl+Shift+R — caller should call webContents.reloadIgnoringCache()
  */
-export type ShortcutResult = boolean | "close-tab";
+export type ShortcutResult = boolean | "close-tab" | "open-settings" | "reload" | "force-reload";
 
 export function handleAppShortcut(
   input: ShortcutInput,
@@ -55,13 +58,22 @@ export function handleAppShortcut(
   const secondary = platform === "darwin" ? input.control : input.meta;
   const noSecondaryModifiers = !secondary && !input.alt;
 
-  // Block reload — accidental Cmd+R / Ctrl+R / F5 destroys in-memory state
-  // (tabs, drafts, WS connections) with no URL bar to recover from.
-  if ((primary && input.key.toLowerCase() === "r") || input.key === "F5") {
+  // F5 without a primary modifier: swallow to prevent accidental reload.
+  if (input.key === "F5" && !primary) {
     return true;
   }
 
   if (!primary || !noSecondaryModifiers) return false;
+
+  // Cmd/Ctrl+Shift+R → force reload (check before plain R).
+  if (input.shift && input.key.toLowerCase() === "r") {
+    return "force-reload";
+  }
+
+  // Cmd/Ctrl+R → reload.
+  if (input.key.toLowerCase() === "r") {
+    return "reload";
+  }
 
   // Cmd/Ctrl + "=" (unshifted) or "+" (Shift+=) → zoom in.
   if (

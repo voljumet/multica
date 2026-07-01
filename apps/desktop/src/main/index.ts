@@ -332,6 +332,9 @@ function createWindow(): BrowserWindow {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 17 },
     show: false,
+    // Dark background prevents the white flash between reload and first paint.
+    // Matches --background in dark mode: oklch(0.18 0.005 285.823) ≈ #111114.
+    backgroundColor: "#111114",
     autoHideMenuBar: true,
     // Windows/Linux pick up the window/taskbar icon from this option.
     // On macOS it's ignored (dock comes from app.dock.setIcon below).
@@ -400,9 +403,28 @@ function createWindow(): BrowserWindow {
     return { action: "deny" };
   });
 
-  // Calling preventDefault in the shared shortcut handler prevents both the
-  // renderer keydown and the application-menu accelerator from double-firing.
-  installWindowShortcutHandler(window);
+  // Window-level keyboard shortcuts. Calling preventDefault here prevents
+  // both the renderer keydown AND the application menu accelerator, so
+  // anything we own here (reload-block, zoom, tab-close) is the sole handler
+  // for that combination — no double-fire with the macOS default View menu.
+  window.webContents.on("before-input-event", (event, input) => {
+    const result = handleAppShortcut(input, window.webContents);
+    if (result === "close-tab") {
+      event.preventDefault();
+      window.webContents.send("tab:close-active");
+    } else if (result === "open-settings") {
+      event.preventDefault();
+      window.webContents.send("navigate:settings");
+    } else if (result === "reload") {
+      event.preventDefault();
+      window.webContents.reload();
+    } else if (result === "force-reload") {
+      event.preventDefault();
+      window.webContents.reloadIgnoringCache();
+    } else if (result) {
+      event.preventDefault();
+    }
+  });
 
   // Dev-mode renderer diagnostics. When the renderer crashes hard enough
   // that DevTools can't be opened (white screen with no clickable surface),
