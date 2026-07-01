@@ -117,3 +117,27 @@ FROM agent_skill ask
 JOIN skill s ON s.id = ask.skill_id
 WHERE s.workspace_id = $1
 ORDER BY s.name ASC;
+
+-- name: UpsertSkillByName :one
+-- Find-or-create a skill by name in a workspace. Used when copying an agent:
+-- if the target workspace already has a skill with the same name, reuse it;
+-- otherwise insert a new one. The DO UPDATE touches updated_at so RETURNING
+-- always gives a current row.
+INSERT INTO skill (workspace_id, name, description, content, config, created_by)
+VALUES (@workspace_id, @name, @description, @content, @config, @created_by)
+ON CONFLICT (workspace_id, name) DO UPDATE
+    SET description = EXCLUDED.description,
+        content     = EXCLUDED.content,
+        config      = EXCLUDED.config,
+        updated_at  = now()
+RETURNING *;
+
+-- name: CopySkillFiles :exec
+-- Duplicates all skill_file rows from source_skill_id under new_skill_id.
+-- ON CONFLICT allows re-running safely if the target skill already existed
+-- and had the same files.
+INSERT INTO skill_file (skill_id, path, content)
+SELECT @new_skill_id::uuid, path, content
+FROM skill_file
+WHERE skill_id = @source_skill_id::uuid
+ON CONFLICT (skill_id, path) DO UPDATE SET content = EXCLUDED.content, updated_at = now();

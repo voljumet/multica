@@ -7,10 +7,11 @@ export type AgentVisibility = "workspace" | "private";
 // Runtime visibility is a separate axis from agent visibility — different
 // vocabulary because it gates a different action. "private" (default) means
 // only the runtime owner and workspace admins can bind agents to it;
-// "public" opens binding to any workspace member. Older backends that
-// haven't shipped MUL-2062 omit the field; the consumer must default to
-// "private" so the strictest behavior is the fallback.
-export type RuntimeVisibility = "private" | "public";
+// "public" opens binding to any workspace member; "shared" makes the runtime
+// available to agents in any workspace. Older backends that haven't shipped
+// MUL-2062 omit the field; the consumer must default to "private" so the
+// strictest behavior is the fallback.
+export type RuntimeVisibility = "private" | "public" | "shared";
 
 export interface RuntimeDevice {
   id: string;

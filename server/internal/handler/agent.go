@@ -752,7 +752,7 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runtime, err := h.Queries.GetAgentRuntimeForWorkspace(r.Context(), db.GetAgentRuntimeForWorkspaceParams{
+	runtime, err := h.Queries.GetAccessibleRuntimeForAgent(r.Context(), db.GetAccessibleRuntimeForAgentParams{
 		ID:          runtimeUUID,
 		WorkspaceID: wsUUID,
 	})
@@ -1076,7 +1076,7 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		runtime, err := h.Queries.GetAgentRuntimeForWorkspace(r.Context(), db.GetAgentRuntimeForWorkspaceParams{
+		runtime, err := h.Queries.GetAccessibleRuntimeForAgent(r.Context(), db.GetAccessibleRuntimeForAgentParams{
 			ID:          runtimeUUID,
 			WorkspaceID: existing.WorkspaceID,
 		})
@@ -1257,7 +1257,7 @@ func (h *Handler) attachAgentSkills(ctx context.Context, resp *AgentResponse, ag
 // thinking_level validator so a runtime/model swap and a level swap
 // validated in the same request both consult the same provider.
 func (h *Handler) resolveAgentProvider(r *http.Request, workspaceID pgtype.UUID, runtimeID pgtype.UUID) (string, bool) {
-	rt, err := h.Queries.GetAgentRuntimeForWorkspace(r.Context(), db.GetAgentRuntimeForWorkspaceParams{
+	rt, err := h.Queries.GetAccessibleRuntimeForAgent(r.Context(), db.GetAccessibleRuntimeForAgentParams{
 		ID:          runtimeID,
 		WorkspaceID: workspaceID,
 	})
@@ -1554,4 +1554,190 @@ func (h *Handler) ListWorkspaceAgentTaskSnapshot(w http.ResponseWriter, r *http.
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type CopyAgentRequest struct {
+	// TargetWorkspaceSlug is the slug of the workspace to copy the agent into.
+	TargetWorkspaceSlug string `json:"target_workspace_slug"`
+	// Name overrides the agent name in the target workspace. If empty, the
+	// source name is used (with " (copy)" appended on conflict).
+	Name string `json:"name,omitempty"`
+	// TargetRuntimeID optionally specifies a runtime in the target workspace to
+	// bind the copied agent to. Required when the source agent's runtime is not
+	// 'shared'; optional (source runtime is used) when it is.
+	TargetRuntimeID string `json:"target_runtime_id,omitempty"`
+}
+
+// CopyAgent handles POST /api/agents/:id/copy. It duplicates an agent's
+// configuration (name, instructions, skills, etc.) into another workspace.
+// Secrets (custom_env, mcp_config, runtime_config) are never copied.
+// The runtime is shared-across-workspaces automatically when visibility='shared';
+// otherwise the caller must supply target_runtime_id.
+func (h *Handler) CopyAgent(w http.ResponseWriter, r *http.Request) {
+	agentID := chi.URLParam(r, "id")
+	src, ok := h.loadAgentForUser(w, r, agentID)
+	if !ok {
+		return
+	}
+
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var req CopyAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.TargetWorkspaceSlug == "" {
+		writeError(w, http.StatusBadRequest, "target_workspace_slug is required")
+		return
+	}
+
+	targetWs, err := h.Queries.GetWorkspaceBySlug(r.Context(), req.TargetWorkspaceSlug)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "target workspace not found")
+		return
+	}
+	targetWsID := uuidToString(targetWs.ID)
+
+	// Caller must be admin or owner of the target workspace to create agents there.
+	if _, ok := h.requireWorkspaceRole(w, r, targetWsID, "target workspace not found", "owner", "admin"); !ok {
+		return
+	}
+
+	// Resolve runtime for the copy.
+	srcRuntime, err := h.Queries.GetAgentRuntime(r.Context(), src.RuntimeID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load source runtime")
+		return
+	}
+
+	var targetRuntimeID pgtype.UUID
+	if req.TargetRuntimeID != "" {
+		rUUID, ok2 := parseUUIDOrBadRequest(w, req.TargetRuntimeID, "target_runtime_id")
+		if !ok2 {
+			return
+		}
+		rt, err2 := h.Queries.GetAccessibleRuntimeForAgent(r.Context(), db.GetAccessibleRuntimeForAgentParams{
+			ID:          rUUID,
+			WorkspaceID: targetWs.ID,
+		})
+		if err2 != nil {
+			writeError(w, http.StatusBadRequest, "invalid target_runtime_id")
+			return
+		}
+		targetRuntimeID = rt.ID
+	} else if srcRuntime.Visibility == "shared" {
+		targetRuntimeID = srcRuntime.ID
+	} else {
+		writeError(w, http.StatusUnprocessableEntity,
+			"the agent's runtime is not shared; either mark the runtime as 'shared' or provide target_runtime_id")
+		return
+	}
+
+	// Resolve the target agent's runtime for RuntimeMode.
+	targetRuntime, err := h.Queries.GetAgentRuntime(r.Context(), targetRuntimeID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load target runtime")
+		return
+	}
+
+	// Determine the name to use in the target workspace.
+	targetName := src.Name
+	if req.Name != "" {
+		targetName = req.Name
+	}
+
+	created, err := h.Queries.CreateAgent(r.Context(), db.CreateAgentParams{
+		WorkspaceID:        targetWs.ID,
+		Name:               targetName,
+		Description:        src.Description,
+		Instructions:       src.Instructions,
+		AvatarUrl:          src.AvatarUrl,
+		RuntimeMode:        targetRuntime.RuntimeMode,
+		RuntimeConfig:      []byte("{}"),
+		RuntimeID:          targetRuntimeID,
+		Visibility:         "private",
+		MaxConcurrentTasks: src.MaxConcurrentTasks,
+		OwnerID:            parseUUID(userID),
+		CustomEnv:          []byte("{}"),
+		CustomArgs:         src.CustomArgs,
+		Model:              src.Model,
+		ThinkingLevel:      src.ThinkingLevel,
+	})
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "agent_workspace_name_unique" {
+			// Retry with " (copy)" suffix.
+			created, err = h.Queries.CreateAgent(r.Context(), db.CreateAgentParams{
+				WorkspaceID:        targetWs.ID,
+				Name:               targetName + " (copy)",
+				Description:        src.Description,
+				Instructions:       src.Instructions,
+				AvatarUrl:          src.AvatarUrl,
+				RuntimeMode:        targetRuntime.RuntimeMode,
+				RuntimeConfig:      []byte("{}"),
+				RuntimeID:          targetRuntimeID,
+				Visibility:         "private",
+				MaxConcurrentTasks: src.MaxConcurrentTasks,
+				OwnerID:            parseUUID(userID),
+				CustomEnv:          []byte("{}"),
+				CustomArgs:         src.CustomArgs,
+				Model:              src.Model,
+				ThinkingLevel:      src.ThinkingLevel,
+			})
+		}
+		if err != nil {
+			slog.Warn("copy agent create failed", "error", err, "source_agent_id", agentID, "target_workspace", targetWsID)
+			writeError(w, http.StatusInternalServerError, "failed to copy agent")
+			return
+		}
+	}
+
+	// Copy custom skills to the target workspace and attach them.
+	srcSkills, err := h.Queries.ListAgentSkills(r.Context(), src.ID)
+	if err != nil {
+		slog.Warn("copy agent: failed to load source skills", "error", err, "source_agent_id", agentID)
+	} else {
+		for _, skill := range srcSkills {
+			copied, err := h.Queries.UpsertSkillByName(r.Context(), db.UpsertSkillByNameParams{
+				WorkspaceID: targetWs.ID,
+				Name:        skill.Name,
+				Description: skill.Description,
+				Content:     skill.Content,
+				Config:      skill.Config,
+				CreatedBy:   parseUUID(userID),
+			})
+			if err != nil {
+				slog.Warn("copy agent: failed to upsert skill", "error", err, "skill_name", skill.Name)
+				continue
+			}
+			if err := h.Queries.CopySkillFiles(r.Context(), db.CopySkillFilesParams{
+				NewSkillID:    copied.ID,
+				SourceSkillID: skill.ID,
+			}); err != nil {
+				slog.Warn("copy agent: failed to copy skill files", "error", err, "skill_id", uuidToString(skill.ID))
+			}
+			if err := h.Queries.AddAgentSkill(r.Context(), db.AddAgentSkillParams{
+				AgentID: created.ID,
+				SkillID: copied.ID,
+			}); err != nil {
+				slog.Warn("copy agent: failed to attach skill", "error", err, "skill_id", uuidToString(copied.ID))
+			}
+		}
+	}
+
+	if targetRuntime.Status == "online" {
+		h.TaskService.ReconcileAgentStatus(r.Context(), created.ID)
+		created, _ = h.Queries.GetAgent(r.Context(), created.ID)
+	}
+
+	resp := agentToResponse(created)
+	if err := h.attachAgentSkills(r.Context(), &resp, created.ID); err != nil {
+		slog.Warn("copy agent: failed to attach skills to response", "error", err)
+	}
+	slog.Info("agent copied", "source_agent_id", agentID, "new_agent_id", uuidToString(created.ID), "target_workspace", targetWsID)
+	writeJSON(w, http.StatusCreated, resp)
 }

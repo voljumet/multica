@@ -446,8 +446,8 @@ func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
 	)
 	if req.Visibility != nil {
 		v := *req.Visibility
-		if v != "private" && v != "public" {
-			writeError(w, http.StatusBadRequest, "visibility must be 'private' or 'public'")
+		if v != "private" && v != "public" && v != "shared" {
+			writeError(w, http.StatusBadRequest, "visibility must be 'private', 'public', or 'shared'")
 			return
 		}
 		if v != rt.Visibility {
@@ -487,16 +487,17 @@ func canEditRuntime(member db.Member, rt db.AgentRuntime) bool {
 
 // canUseRuntimeForAgent reports whether a workspace member is allowed to
 // bind a new agent to — or move an existing agent onto — the given runtime.
-// Mirrors canEditRuntime but layers on the runtime's visibility flag so a
-// `public` runtime is usable by anyone in the workspace while a `private`
-// runtime stays bound to its owner. Workspace owners/admins keep an
-// administrative override for both. See migration 083 for the visibility
-// column.
+// Mirrors canEditRuntime but layers on the runtime's visibility flag:
+//   - 'public'  — any member of the runtime's own workspace can bind agents
+//   - 'shared'  — any authenticated member of any workspace can bind agents
+//   - 'private' — only the owner or a workspace owner/admin can bind agents
+//
+// See migration 083 (visibility column) and 132 ('shared' tier).
 func canUseRuntimeForAgent(member db.Member, rt db.AgentRuntime) bool {
 	if roleAllowed(member.Role, "owner", "admin") {
 		return true
 	}
-	if rt.Visibility == "public" {
+	if rt.Visibility == "public" || rt.Visibility == "shared" {
 		return true
 	}
 	return rt.OwnerID.Valid && uuidToString(rt.OwnerID) == uuidToString(member.UserID)
@@ -531,6 +532,24 @@ func (h *Handler) ListAgentRuntimes(w http.ResponseWriter, r *http.Request) {
 		resp[i] = runtimeToResponse(rt)
 	}
 
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// ListSharedRuntimes returns all runtimes with visibility='shared' across all
+// workspaces. Used by the cross-workspace runtime picker so agents in workspace B
+// can discover and bind to shared runtimes owned by workspace A.
+// Requires authentication but no workspace scope.
+func (h *Handler) ListSharedRuntimes(w http.ResponseWriter, r *http.Request) {
+	runtimes, err := h.Queries.ListSharedRuntimes(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list shared runtimes")
+		return
+	}
+
+	resp := make([]AgentRuntimeResponse, len(runtimes))
+	for i, rt := range runtimes {
+		resp[i] = runtimeToResponse(rt)
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 

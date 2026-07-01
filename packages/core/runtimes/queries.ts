@@ -5,6 +5,7 @@ export const runtimeKeys = {
   all: (wsId: string) => ["runtimes", wsId] as const,
   list: (wsId: string) => [...runtimeKeys.all(wsId), "list"] as const,
   listMine: (wsId: string) => [...runtimeKeys.all(wsId), "list", "mine"] as const,
+  shared: () => ["runtimes", "shared"] as const,
   usage: (rid: string, days: number, tz: string) =>
     ["runtimes", "usage", rid, days, tz] as const,
   usageByAgent: (rid: string, days: number, tz: string) =>
@@ -52,6 +53,14 @@ export function runtimeListOptions(wsId: string, owner?: "me") {
   return queryOptions({
     queryKey: owner === "me" ? runtimeKeys.listMine(wsId) : runtimeKeys.list(wsId),
     queryFn: () => api.listRuntimes({ workspace_id: wsId, owner }),
+  });
+}
+
+export function sharedRuntimeListOptions() {
+  return queryOptions({
+    queryKey: runtimeKeys.shared(),
+    queryFn: () => api.listSharedRuntimes(),
+    staleTime: 60 * 1000,
   });
 }
 
