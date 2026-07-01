@@ -69,5 +69,5 @@ func briefFlags() *featureflag.Service {
 // `runtime_brief_slim.default: true` → true → slim. Ops can override per
 // process with `FF_RUNTIME_BRIEF_SLIM=true`.
 func useSlimBrief() bool {
-	return briefFlags().IsEnabled(context.Background(), runtimeBriefSlimFlag, false)
+	return briefFlags().IsEnabled(context.Background(), runtimeBriefSlimFlag, true)
 }

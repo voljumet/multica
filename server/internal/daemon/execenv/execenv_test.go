@@ -334,13 +334,15 @@ func TestPrepareWithRepoContext(t *testing.T) {
 	for _, want := range []string{
 		"multica repo checkout",
 		"https://github.com/org/backend",
-		"default ref: `release/v2`",
 		"https://github.com/org/frontend",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("CLAUDE.md missing %q", want)
 		}
 	}
+	// The slim Repositories section intentionally omits per-repo ref hints
+	// (it includes [--ref <branch-or-sha>] in the command line instead).
+	// The ref is still available as task context for skills that need it.
 }
 
 func TestWriteContextFiles(t *testing.T) {
@@ -4125,10 +4127,17 @@ func TestInjectRuntimeConfigIssueMetadataSectionScope(t *testing.T) {
 			}
 			s := string(data)
 
-			// Global Core discovery lines apply everywhere.
-			for _, want := range coreDiscoveryLines {
-				if !strings.Contains(s, want) {
-					t.Errorf("Available Commands → Core missing %q\n---\n%s", want, s)
+			// Discovery lines apply to issue-scoped kinds. The slim brief
+			// for quick-create/chat/autopilot intentionally minimizes the
+			// Available Commands section per their hard guardrails, so they
+			// don't include metadata commands even as discovery lines.
+			if tc.name != "quick_create_no_metadata_section" &&
+				tc.name != "chat_no_metadata_section" &&
+				tc.name != "run_only_autopilot_no_metadata_section" {
+				for _, want := range coreDiscoveryLines {
+					if !strings.Contains(s, want) {
+						t.Errorf("Available Commands → Core missing %q\n---\n%s", want, s)
+					}
 				}
 			}
 
