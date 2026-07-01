@@ -445,6 +445,20 @@ func TestSubIssueCreationSectionIsUnconditional(t *testing.T) {
 	}
 }
 
+// TestBuildMetaSkillContent_DefaultIsSlim verifies that useSlimBrief()
+// returns true when no feature flag service is wired (i.e. the bare
+// package default). This is the production path after MUL-3560 ships.
+func TestBuildMetaSkillContent_DefaultIsSlim(t *testing.T) {
+	// Ensure no flag service is wired for this test.
+	saved := runtimeFlags.Load()
+	runtimeFlags.Store(nil)
+	t.Cleanup(func() { runtimeFlags.Store(saved) })
+
+	if !useSlimBrief() {
+		t.Fatal("expected useSlimBrief() to return true by default (production path); got false")
+	}
+}
+
 // Workspace Context block: workspace.context (the per-workspace system prompt
 // owners set in Settings → General) must reach the brief as `## Workspace
 // Context` for every task kind so agents see a consistent shared system prompt

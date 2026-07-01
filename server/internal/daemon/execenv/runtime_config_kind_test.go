@@ -9,8 +9,8 @@ import (
 
 // withSlimBrief enables the `runtime_brief_slim` feature flag for the
 // duration of the test, then restores whatever provider was wired before.
-// Tests that exercise the slim path must call this; everything else gets
-// the default-off behaviour and exercises the legacy path.
+// Tests that exercise the legacy path must call withLegacyBrief instead;
+// everything else gets the default-slim behaviour.
 //
 // The helper is NOT t.Parallel-safe because runtimeFlags is a process-wide
 // atomic.Pointer. Tests that need the slim path stay serial. Hardly any
@@ -20,6 +20,22 @@ func withSlimBrief(t *testing.T) {
 	saved := runtimeFlags.Load()
 	provider := featureflag.NewStaticProvider()
 	provider.Set(runtimeBriefSlimFlag, featureflag.Rule{Default: true})
+	runtimeFlags.Store(featureflag.NewService(provider))
+	t.Cleanup(func() { runtimeFlags.Store(saved) })
+}
+
+// withLegacyBrief disables the `runtime_brief_slim` feature flag for the
+// duration of the test, forcing the legacy brief path. Used for tests that
+// verify the legacy path still works (e.g., TestSlimFlagOffUsesLegacy after
+// the default flipped to true).
+//
+// The helper is NOT t.Parallel-safe because runtimeFlags is a process-wide
+// atomic.Pointer.
+func withLegacyBrief(t *testing.T) {
+	t.Helper()
+	saved := runtimeFlags.Load()
+	provider := featureflag.NewStaticProvider()
+	provider.Set(runtimeBriefSlimFlag, featureflag.Rule{Default: false})
 	runtimeFlags.Store(featureflag.NewService(provider))
 	t.Cleanup(func() { runtimeFlags.Store(saved) })
 }
@@ -75,16 +91,11 @@ func TestTaskKindHasIssueContext(t *testing.T) {
 	}
 }
 
-// TestSlimFlagOffUsesLegacy is the canary that production stays on the
-// legacy brief by default. If a future change accidentally flips the flag
-// default to true (or breaks the dispatcher), this test catches it before
-// it ships.
+// TestSlimFlagOffUsesLegacy is the canary that when the flag is explicitly
+// off, the legacy brief is rendered. After the default flipped to true (MUL-3560),
+// this test explicitly wires the flag off to verify the legacy path still works.
 func TestSlimFlagOffUsesLegacy(t *testing.T) {
-	// Not parallel: reads runtimeFlags without enabling slim, so any
-	// test that races us by enabling slim would invalidate the assertion.
-	saved := runtimeFlags.Load()
-	t.Cleanup(func() { runtimeFlags.Store(saved) })
-	runtimeFlags.Store(nil)
+	withLegacyBrief(t)
 
 	out := buildMetaSkillContent("claude", TaskContextForEnv{
 		IssueID:          "issue-1",
@@ -263,10 +274,7 @@ func TestSlimBriefIsSubstantiallyShorter(t *testing.T) {
 		},
 	}
 
-	saved := runtimeFlags.Load()
-	t.Cleanup(func() { runtimeFlags.Store(saved) })
-
-	runtimeFlags.Store(nil)
+	withLegacyBrief(t)
 	legacy := buildMetaSkillContent("claude", ctx)
 
 	withSlimBrief(t)

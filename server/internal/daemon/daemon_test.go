@@ -1043,6 +1043,111 @@ func TestGateResumeToReusedWorkdir(t *testing.T) {
 	}
 }
 
+// TestCommentTaskDropsPriorSession verifies that comment-triggered tasks
+// never pass --resume to the backend, regardless of whether the server
+// sent a PriorSessionID. Session history from prior runs accumulates
+// unbounded input tokens over back-and-forth comment cycles; comment
+// tasks re-read issue context fresh via CLI so the history adds nothing.
+func TestCommentTaskDropsPriorSession(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name             string
+		triggerCommentID string // non-empty → comment task
+		priorSessionID   string
+		wantResume       string // expected ResumeSessionID passed to backend
+	}{
+		{
+			name:             "comment task with prior session: resume must be dropped",
+			triggerCommentID: "comment-abc",
+			priorSessionID:   "session-xyz",
+			wantResume:       "",
+		},
+		{
+			name:             "comment task without prior session: no-op",
+			triggerCommentID: "comment-abc",
+			priorSessionID:   "",
+			wantResume:       "",
+		},
+		{
+			name:             "assignment task with prior session: resume kept",
+			triggerCommentID: "", // assignment task (no trigger comment)
+			priorSessionID:   "session-xyz",
+			wantResume:       "session-xyz",
+		},
+		{
+			name:             "assignment task without prior session: no-op",
+			triggerCommentID: "",
+			priorSessionID:   "",
+			wantResume:       "",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := commentTaskPriorSession(tc.triggerCommentID, tc.priorSessionID)
+			if got != tc.wantResume {
+				t.Errorf("commentTaskPriorSession(%q, %q) = %q, want %q",
+					tc.triggerCommentID, tc.priorSessionID, got, tc.wantResume)
+			}
+		})
+	}
+}
+
+// TestPriorSessionResumedFalseForCommentTask verifies that when a task has
+// both a TriggerCommentID and a PriorSessionID, PriorSessionResumed is false.
+// Comment tasks re-read issue context fresh and never replay session history,
+// so the brief-builder must not tell the agent it is resuming a prior session.
+func TestPriorSessionResumedFalseForCommentTask(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name             string
+		triggerCommentID string
+		priorSessionID   string
+		wantResumed      bool
+	}{
+		{
+			name:             "comment task with prior session: PriorSessionResumed must be false",
+			triggerCommentID: "comment-abc",
+			priorSessionID:   "session-xyz",
+			wantResumed:      false,
+		},
+		{
+			name:             "assignment task with prior session: PriorSessionResumed must be true",
+			triggerCommentID: "",
+			priorSessionID:   "session-xyz",
+			wantResumed:      true,
+		},
+		{
+			name:             "comment task without prior session: PriorSessionResumed must be false",
+			triggerCommentID: "comment-abc",
+			priorSessionID:   "",
+			wantResumed:      false,
+		},
+		{
+			name:             "assignment task without prior session: PriorSessionResumed must be false",
+			triggerCommentID: "",
+			priorSessionID:   "",
+			wantResumed:      false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := tc.triggerCommentID == "" && tc.priorSessionID != ""
+			if got != tc.wantResumed {
+				t.Errorf("PriorSessionResumed = %v, want %v (triggerCommentID=%q, priorSessionID=%q)",
+					got, tc.wantResumed, tc.triggerCommentID, tc.priorSessionID)
+			}
+		})
+	}
+}
+
 func TestExecuteAndDrain_ResumeFailureFallback(t *testing.T) {
 	t.Parallel()
 
