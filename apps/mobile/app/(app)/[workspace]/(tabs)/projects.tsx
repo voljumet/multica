@@ -1,16 +1,6 @@
 /**
- * Projects browse page. Flat FlatList over the workspace's projects.
- *
- * Title and `+` button live in the native iOS Stack header (declared via
- * Stack.Screen options in parent `_layout.tsx`, overridden here to add
- * `headerRight`). Rendering an in-body title row on top of the native bar
- * would stack two "Projects" labels vertically.
- *
- * Sort: client-side by `updated_at` desc — most recently touched at top.
- * Mirrors web's default list ordering. WS `project:*` events keep the cache
- * fresh via the listing-level realtime hook (`useProjectsRealtime` in
- * `_layout.tsx`), so pull-to-refresh is rarely needed but kept for the
- * cellular-edge case where a WS reconnect missed events.
+ * Projects tab. Moved from more/projects.tsx; header is now the in-body
+ * <Header> component since tab roots have headerShown: false.
  */
 import { useCallback, useMemo } from "react";
 import {
@@ -21,15 +11,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { Stack, router } from "expo-router";
+import { router } from "expo-router";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { Header } from "@/components/ui/header";
+import { HeaderActions } from "@/components/ui/app-header-actions";
 import { ProjectRow } from "@/components/project/project-row";
 import { projectListOptions } from "@/data/queries/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
 
-export default function ProjectsPage() {
+export default function ProjectsTab() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
 
@@ -49,14 +41,21 @@ export default function ProjectsPage() {
     if (wsSlug) router.push(`/${wsSlug}/project/new`);
   }, [wsSlug]);
 
-  const headerRight = useCallback(() => {
-    return <PlusButton onPress={goCreate} />;
-  }, [goCreate]);
-
   return (
     <SafeAreaView className="flex-1 bg-background" edges={[]}>
-      <Stack.Screen options={{ headerRight }} />
-
+      <Header
+        title="Projects"
+        right={
+          <>
+            <IconButton
+              name="add"
+              onPress={goCreate}
+              accessibilityLabel="New project"
+            />
+            <HeaderActions />
+          </>
+        }
+      />
       {isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator />
@@ -95,16 +94,6 @@ export default function ProjectsPage() {
         />
       )}
     </SafeAreaView>
-  );
-}
-
-function PlusButton({ onPress }: { onPress: () => void }) {
-  return (
-    <IconButton
-      name="add"
-      onPress={onPress}
-      accessibilityLabel="New project"
-    />
   );
 }
 

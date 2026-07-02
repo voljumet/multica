@@ -1,24 +1,9 @@
 /**
- * Workspace-wide Issues page. Mirrors web `packages/views/issues/components/
- * issues-page.tsx:32-94`: fetch every issue in the workspace, expose
- * `all / members / agents` scope tabs, group by status, allow status +
- * priority filtering.
+ * "My Issues" push screen. Moved from (tabs)/my-issues.tsx; title comes
+ * from the workspace _layout.tsx Stack entry, no in-body header needed.
  *
- * Scope is a **client-side** filter on `assignee_type` — matches web
- * `issues-page.tsx:90-94`. This keeps `issueListOptions(wsId)` workspace-
- * scoped (no scope param on the wire), so `issueKeys.list(wsId)` and
- * `useIssuesRealtime` need no changes.
- *
- * Differences vs My Issues (`(tabs)/my-issues.tsx`):
- *   - Workspace-wide list (all issues), not user-scoped.
- *   - Three scopes are `all / members / agents` (assignee_type pre-filter),
- *     not `assigned / created / agents` (per-user predicates).
- *   - Independent filter store (`useIssuesViewStore`) so workspace-level
- *     filters don't bleed into the per-user view.
- *
- * Filters beyond status/priority (assignee / project / label / creator)
- * are deferred — power-user features with non-trivial picker cost; ship
- * after the parity-critical scope tabs land.
+ * Three scopes — assigned / created / agents — mirroring
+ * web's `packages/views/my-issues/components/my-issues-page.tsx:48-65`.
  */
 import { useMemo } from "react";
 import { Pressable, SectionList, View } from "react-native";
@@ -28,19 +13,17 @@ import { Ionicons } from "@expo/vector-icons";
 import type { Issue, IssuePriority, IssueStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
-// Header chrome (back + "Issues" title) comes from the parent Stack
-// (`apps/mobile/app/(app)/[workspace]/_layout.tsx:269`). The Filter
-// affordance now lives in <ScopeToolbar> below, matching web's
-// IssuesHeader pattern (scope + filter share a row).
 import { StatusIcon } from "@/components/ui/status-icon";
 import { IssueRow } from "@/components/issue/issue-row";
 import { IssuesLoading } from "@/components/issue/issues-loading";
-import { issueListOptions } from "@/data/queries/issues";
-import { useWorkspaceStore } from "@/data/workspace-store";
 import {
-  useIssuesViewStore,
-  type IssuesScope,
-} from "@/data/stores/issues-view-store";
+  buildMyIssuesFilter,
+  myIssueListOptions,
+} from "@/data/queries/my-issues";
+import type { MyIssuesScope } from "@/data/queries/issue-keys";
+import { useAuthStore } from "@/data/auth-store";
+import { useWorkspaceStore } from "@/data/workspace-store";
+import { useMyIssuesViewStore } from "@/data/stores/my-issues-view-store";
 import { useClearFiltersOnWorkspaceChange } from "@/lib/use-clear-filters-on-workspace-change";
 import {
   BOARD_STATUSES,
@@ -51,68 +34,54 @@ import { filterIssues } from "@/lib/filter-issues";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 
-type IssueSection = { status: IssueStatus; data: Issue[] };
-
-// Scope tab definitions. Mirrors web `issuesScopeStore`. Counts are NOT
-// rendered on the pill labels — web's `IssuesHeader` doesn't show them
-// either, and on SE3 (375pt) "(123)" appended to each label pushes the
-// row past the safe width when filter icon shares the row. Per-status
-// counts still appear on the SectionList headers below.
-const SCOPES: { value: IssuesScope; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "members", label: "Members" },
+const SCOPES: { value: MyIssuesScope; label: string }[] = [
+  { value: "assigned", label: "Assigned" },
+  { value: "created", label: "Created" },
   { value: "agents", label: "Agents" },
 ];
 
-export default function IssuesPage() {
+type IssueSection = { status: IssueStatus; data: Issue[] };
+
+export default function MyIssuesPage() {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
 
-  const scope = useIssuesViewStore((s) => s.scope);
-  const setScope = useIssuesViewStore((s) => s.setScope);
-  const statusFilters = useIssuesViewStore((s) => s.statusFilters);
-  const priorityFilters = useIssuesViewStore((s) => s.priorityFilters);
+  const scope = useMyIssuesViewStore((s) => s.scope);
+  const setScope = useMyIssuesViewStore((s) => s.setScope);
+  const statusFilters = useMyIssuesViewStore((s) => s.statusFilters);
+  const priorityFilters = useMyIssuesViewStore((s) => s.priorityFilters);
+  const sortByLastEdited = useMyIssuesViewStore((s) => s.sortByLastEdited);
 
   const openFilter = () => {
     if (!wsSlug) return;
     router.push({
       pathname: "/[workspace]/issues-filter",
-      params: { workspace: wsSlug, scope: "all" },
+      params: { workspace: wsSlug, scope: "my" },
     });
   };
 
   useClearFiltersOnWorkspaceChange(
-    useIssuesViewStore.getState().clearFilters,
+    useMyIssuesViewStore.getState().clearFilters,
     wsId,
   );
 
-  const { data, isLoading, error, refetch, isRefetching } = useQuery(
-    issueListOptions(wsId),
+  const filter = useMemo(
+    () => (userId ? buildMyIssuesFilter(scope, userId) : { assignee_id: "" }),
+    [scope, userId],
   );
 
-  const allIssues = data ?? [];
+  const { data, isLoading, error, refetch, isRefetching } = useQuery({
+    ...myIssueListOptions(wsId, scope, filter),
+    enabled: !!wsId && !!userId,
+  });
 
-  // Scope pre-filter — mirrors web `issues-page.tsx:90-94`. Applied before
-  // status/priority filtering so chip filters operate on the visible slice.
-  const scopedIssues = useMemo(() => {
-    if (scope === "members") {
-      return allIssues.filter((i) => i.assignee_type === "member");
-    }
-    if (scope === "agents") {
-      return allIssues.filter(
-        (i) => i.assignee_type === "agent" || i.assignee_type === "squad",
-      );
-    }
-    return allIssues;
-  }, [allIssues, scope]);
+  const filtered = useMemo(() => {
+    const f = filterIssues(data ?? [], statusFilters, priorityFilters);
+    if (!sortByLastEdited) return f;
+    return [...f].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  }, [data, statusFilters, priorityFilters, sortByLastEdited]);
 
-  const filtered = useMemo(
-    () => filterIssues(scopedIssues, statusFilters, priorityFilters),
-    [scopedIssues, statusFilters, priorityFilters],
-  );
-
-  // Section grouping uses BOARD_STATUSES (cancelled excluded) — matches web
-  // `issues-page.tsx:117-125`.
   const sections = useMemo<IssueSection[]>(() => {
     if (filtered.length === 0) return [];
     const byStatus = new Map<IssueStatus, Issue[]>();
@@ -121,17 +90,16 @@ export default function IssuesPage() {
       if (list) list.push(issue);
       else byStatus.set(issue.status, [issue]);
     }
-    const visibleStatuses =
-      statusFilters.length > 0
-        ? BOARD_STATUSES.filter((s) => statusFilters.includes(s))
-        : BOARD_STATUSES;
+    const visibleStatuses = statusFilters.length > 0
+      ? BOARD_STATUSES.filter((s) => statusFilters.includes(s))
+      : BOARD_STATUSES;
     return visibleStatuses
       .map((status) => ({ status, data: byStatus.get(status) ?? [] }))
       .filter((s) => s.data.length > 0);
   }, [filtered, statusFilters]);
 
   const hasActiveFilters =
-    statusFilters.length > 0 || priorityFilters.length > 0;
+    statusFilters.length > 0 || priorityFilters.length > 0 || sortByLastEdited;
 
   const showEmptyState = !isLoading && !error && filtered.length === 0;
 
@@ -149,10 +117,10 @@ export default function IssuesPage() {
           statusFilters={statusFilters}
           priorityFilters={priorityFilters}
           onClearStatus={(s) =>
-            useIssuesViewStore.getState().toggleStatusFilter(s)
+            useMyIssuesViewStore.getState().toggleStatusFilter(s)
           }
           onClearPriority={(p) =>
-            useIssuesViewStore.getState().togglePriorityFilter(p)
+            useMyIssuesViewStore.getState().togglePriorityFilter(p)
           }
         />
       ) : null}
@@ -185,7 +153,10 @@ export default function IssuesPage() {
             <View className="h-px bg-border ml-4" />
           )}
           renderSectionHeader={({ section }) => (
-            <SectionHeader status={section.status} count={section.data.length} />
+            <SectionHeader
+              status={section.status}
+              count={section.data.length}
+            />
           )}
           contentContainerClassName="pb-6"
           renderItem={({ item }) => (
@@ -204,11 +175,6 @@ export default function IssuesPage() {
   );
 }
 
-/**
- * Outline icon button matching the pill height. Identical to the helper in
- * `(tabs)/my-issues.tsx` for the same reason ScopeToolbar is duplicated:
- * two callers don't justify a shared primitive yet.
- */
 function FilterButton({
   onPress,
   hasActiveFilters,
@@ -242,14 +208,6 @@ function FilterButton({
   );
 }
 
-/**
- * Toolbar row mirroring web `IssuesHeader`
- * (`packages/views/issues/components/issues-header.tsx:516-543`): left-aligned
- * scope pill group + right-side Filter icon (red dot on active filters).
- * Identical to the equivalent in `(tabs)/my-issues.tsx` — kept duplicated
- * because the threshold for a shared `components/ui/` primitive is 3 callers,
- * and two callers don't justify the abstraction yet.
- */
 function ScopeToolbar<S extends string>({
   scopes,
   scope,
@@ -309,18 +267,10 @@ function ActiveFilterChips({
   return (
     <View className="flex-row flex-wrap gap-1.5 px-4 pb-2">
       {statusFilters.map((s) => (
-        <Chip
-          key={`s-${s}`}
-          label={STATUS_LABEL[s]}
-          onClear={() => onClearStatus(s)}
-        />
+        <Chip key={`s-${s}`} label={STATUS_LABEL[s]} onClear={() => onClearStatus(s)} />
       ))}
       {priorityFilters.map((p) => (
-        <Chip
-          key={`p-${p}`}
-          label={PRIORITY_LABEL[p]}
-          onClear={() => onClearPriority(p)}
-        />
+        <Chip key={`p-${p}`} label={PRIORITY_LABEL[p]} onClear={() => onClearPriority(p)} />
       ))}
     </View>
   );
@@ -371,13 +321,13 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function emptyMessageForScope(scope: IssuesScope): string {
+function emptyMessageForScope(scope: MyIssuesScope): string {
   switch (scope) {
-    case "all":
-      return "No issues in this workspace.";
-    case "members":
-      return "No issues assigned to a member.";
+    case "assigned":
+      return "No issues assigned to you.";
+    case "created":
+      return "You haven't created any issues.";
     case "agents":
-      return "No issues assigned to agents or squads.";
+      return "No issues assigned to your agents or squads yet.";
   }
 }
