@@ -10,6 +10,7 @@ import {
   MessageSquare,
   MoreHorizontal,
   Plus,
+  Send,
   Server,
   Trash2,
 } from "lucide-react";
@@ -61,6 +62,7 @@ import { AgentPresenceIndicator } from "./agent-presence-indicator";
 import { VisibilityBadge } from "./visibility-badge";
 import { AgentOverviewPane, type DetailTab } from "./agent-overview-pane";
 import { ExpandableDescription } from "../../common/expandable-description";
+import { DeployAgentModal } from "./deploy-agent-modal";
 import { useT, useTimeAgo } from "../../i18n";
 
 interface AgentDetailPageProps {
@@ -116,6 +118,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
   } = useAgentPermissions(agent, wsId);
 
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [deployOpen, setDeployOpen] = useState(false);
 
   // One-shot channel: the inspector's compact Lark status row asks the
   // overview pane to focus a tab. The pane clears it after consuming.
@@ -307,7 +310,16 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
         onDm={handleDm}
         onAssign={handleAssign}
         onArchive={() => setConfirmArchive(true)}
+        onDeploy={() => setDeployOpen(true)}
       />
+      {deployOpen && (
+        <DeployAgentModal
+          agent={agent}
+          currentWorkspaceId={wsId}
+          open={deployOpen}
+          onOpenChange={setDeployOpen}
+        />
+      )}
 
       {!canEdit.allowed && (
         <div className="px-6 pt-3">
@@ -429,6 +441,7 @@ function DetailHeader({
   onDm,
   onAssign,
   onArchive,
+  onDeploy,
 }: {
   agent: Agent;
   runtime: AgentRuntime | null;
@@ -440,6 +453,7 @@ function DetailHeader({
   onDm: () => void;
   onAssign: () => void;
   onArchive: () => void;
+  onDeploy: () => void;
 }) {
   const { t } = useT("agents");
   const timeAgo = useTimeAgo();
@@ -532,6 +546,11 @@ function DetailHeader({
               />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-auto">
+              <DropdownMenuItem onClick={onDeploy}>
+                <Send className="h-3.5 w-3.5" />
+                Deploy to workspace
+              </DropdownMenuItem>
+              {canArchive && (
               <DropdownMenuItem
                 variant="destructive"
                 onClick={onArchive}
@@ -539,6 +558,7 @@ function DetailHeader({
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 {t(($) => $.detail.more_archive)}
               </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
             ) : null}
