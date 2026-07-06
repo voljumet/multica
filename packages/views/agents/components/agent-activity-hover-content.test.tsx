@@ -30,6 +30,7 @@ vi.mock("@multica/core/workspace/hooks", () => ({
 // header still derives from the task array.
 vi.mock("@multica/core/runtimes/queries", () => ({
   runtimeListOptions: () => ({ queryKey: ["runtimes"] }),
+  sharedRuntimeListOptions: () => ({ queryKey: ["shared-runtimes"] }),
 }));
 
 vi.mock("@multica/core/workspace/queries", () => ({

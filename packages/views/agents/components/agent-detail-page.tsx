@@ -25,7 +25,7 @@ import {
   memberListOptions,
   workspaceKeys,
 } from "@multica/core/workspace/queries";
-import { runtimeListOptions } from "@multica/core/runtimes";
+import { runtimeListOptions, sharedRuntimeListOptions } from "@multica/core/runtimes";
 import { useAgentPermissions } from "@multica/core/permissions";
 import { Button } from "@multica/ui/components/ui/button";
 import { CapabilityBanner } from "@multica/ui/components/common/capability-banner";
@@ -72,6 +72,9 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
     refetch: refetchAgents,
   } = useQuery(agentListOptions(wsId));
   const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
+  // Agents can run on a shared runtime owned by another workspace; it won't
+  // be in the workspace list, so resolve against the shared list as fallback.
+  const { data: sharedRuntimes = [] } = useQuery(sharedRuntimeListOptions());
   const { data: members = [] } = useQuery(memberListOptions(wsId));
 
   // Single workspace-level presence pass; this page just reads its slot.
@@ -241,7 +244,9 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
 
   const isArchived = !!agent.archived_at;
   const runtime = agent.runtime_id
-    ? runtimes.find((r) => r.id === agent.runtime_id) ?? null
+    ? runtimes.find((r) => r.id === agent.runtime_id) ??
+      sharedRuntimes.find((r) => r.id === agent.runtime_id) ??
+      null
     : null;
   const owner = agent.owner_id
     ? members.find((m) => m.user_id === agent.owner_id) ?? null

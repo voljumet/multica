@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import type { Agent, Workspace } from "@multica/core/types";
 import { useCopyAgent } from "@multica/core/agents";
+import { sharedRuntimeListOptions } from "@multica/core/runtimes";
 import { workspaceListOptions } from "@multica/core/workspace/queries";
 import { Button } from "@multica/ui/components/ui/button";
 import {
@@ -41,18 +42,29 @@ export function DeployAgentModal({
 }: DeployAgentModalProps) {
   const [targetSlug, setTargetSlug] = useState("");
   const [name, setName] = useState(agent.name);
+  const [targetRuntimeId, setTargetRuntimeId] = useState("");
 
   const { data: workspaces = [] } = useQuery(workspaceListOptions());
+  const { data: sharedRuntimes = [] } = useQuery(sharedRuntimeListOptions());
   const copyAgent = useCopyAgent();
 
   const otherWorkspaces: Workspace[] = workspaces.filter(
     (w) => w.id !== currentWorkspaceId,
   );
 
+  const sourceRuntimeIsShared = sharedRuntimes.some((r) => r.id === agent.runtime_id);
+  const needsRuntimePicker = !sourceRuntimeIsShared;
+  const canDeploy = !!targetSlug && (!needsRuntimePicker || !!targetRuntimeId);
+
   const handleDeploy = () => {
-    if (!targetSlug) return;
+    if (!canDeploy) return;
     copyAgent.mutate(
-      { agentId: agent.id, targetWorkspaceSlug: targetSlug, name: name !== agent.name ? name : undefined },
+      {
+        agentId: agent.id,
+        targetWorkspaceSlug: targetSlug,
+        name: name !== agent.name ? name : undefined,
+        targetRuntimeId: needsRuntimePicker ? targetRuntimeId : undefined,
+      },
       {
         onSuccess: () => {
           toast.success(`Agent deployed to ${targetSlug}`);
@@ -101,6 +113,28 @@ export function DeployAgentModal({
               placeholder={agent.name}
             />
           </div>
+          {needsRuntimePicker && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Runtime</Label>
+              <p className="text-sm text-muted-foreground">
+                This agent&apos;s runtime is not shared. Select a shared runtime to
+                use in the target workspace, or mark the current runtime as shared
+                first.
+              </p>
+              <Select value={targetRuntimeId} onValueChange={(v) => setTargetRuntimeId(v ?? "")}>
+                <SelectTrigger>
+                  <SelectValue placeholder={sharedRuntimes.length === 0 ? "No shared runtimes available" : "Select a runtime…"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {sharedRuntimes.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -108,7 +142,7 @@ export function DeployAgentModal({
           </Button>
           <Button
             onClick={handleDeploy}
-            disabled={!targetSlug || copyAgent.isPending}
+            disabled={!canDeploy || copyAgent.isPending}
           >
             <Send className="h-4 w-4" />
             {copyAgent.isPending ? "Deploying…" : "Deploy"}

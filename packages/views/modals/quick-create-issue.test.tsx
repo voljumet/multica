@@ -41,6 +41,13 @@ const mockSquadsData = vi.hoisted(
   () => ({ list: [] as Array<{ id: string; name: string; leader_id: string; archived_at: string | null }> }),
 );
 
+// Per-test override for workspace-local vs cross-workspace shared runtimes,
+// so the version gate's shared-runtime fallback can be exercised.
+const mockRuntimesData = vi.hoisted(() => ({
+  list: [] as Array<{ id: string; metadata: Record<string, unknown> }>,
+  shared: [] as Array<{ id: string; metadata: Record<string, unknown> }>,
+}));
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => {
     // Workspace-scoped query keys carry the wsId as `queryKey[1]`; the
@@ -56,7 +63,9 @@ vi.mock("@tanstack/react-query", () => ({
           data: [{ id: "agent-1", name: "Bohan", archived_at: null, runtime_id: "runtime-1" }],
         };
       case "runtimes":
-        return { data: [{ id: "runtime-1", metadata: { cli_version: "1.2.3" } }] };
+        return { data: mockRuntimesData.list };
+      case "shared-runtimes":
+        return { data: mockRuntimesData.shared };
       case "projects":
         return mockProjectsQuery;
       default:
@@ -111,8 +120,13 @@ vi.mock("@multica/core/auth", () => ({
 
 vi.mock("@multica/core/runtimes", () => ({
   runtimeListOptions: () => ({ queryKey: ["runtimes"] }),
-  checkQuickCreateCliVersion: () => ({ state: "ok", min: "1.0.0" }),
-  readRuntimeCliVersion: () => "1.2.3",
+  sharedRuntimeListOptions: () => ({ queryKey: ["shared-runtimes"] }),
+  // Faithful enough for the gate: version comes from the resolved runtime's
+  // metadata, so an unresolved runtime reads as "missing".
+  checkQuickCreateCliVersion: (v: string) =>
+    v ? { state: "ok", min: "1.0.0" } : { state: "missing", min: "1.0.0" },
+  readRuntimeCliVersion: (metadata?: Record<string, unknown>) =>
+    typeof metadata?.cli_version === "string" ? metadata.cli_version : "",
   MIN_QUICK_CREATE_CLI_VERSION: "1.0.0",
 }));
 
@@ -300,6 +314,8 @@ describe("AgentCreatePanel", () => {
     mockProjectsQuery.data = [];
     mockProjectsQuery.isSuccess = true;
     mockSquadsData.list = [];
+    mockRuntimesData.list = [{ id: "runtime-1", metadata: { cli_version: "1.2.3" } }];
+    mockRuntimesData.shared = [];
     mockQuickCreateIssue.mockResolvedValue(undefined);
     mockUploadWithToast.mockResolvedValue({
       id: "019ec09d-6222-722b-bdfa-427b105d80be",
@@ -321,6 +337,27 @@ describe("AgentCreatePanel", () => {
     mockSetKeepOpen.mockImplementation((value: boolean) => {
       mockQuickCreateStore.keepOpen = value;
     });
+  });
+
+  it("resolves the agent's runtime from the shared list when it's not in the workspace list", () => {
+    // Agent runs on a cross-workspace shared runtime: absent from the
+    // workspace-scoped list, present in the shared list. The version gate
+    // must resolve it there instead of blocking with "version missing".
+    mockRuntimesData.list = [];
+    mockRuntimesData.shared = [{ id: "runtime-1", metadata: { cli_version: "1.2.3" } }];
+
+    renderPanel({ onClose: vi.fn(), isExpanded: false, setIsExpanded: vi.fn() });
+
+    expect(screen.queryByText(/doesn't report a CLI version/i)).not.toBeInTheDocument();
+  });
+
+  it("blocks with the version-missing warning when the runtime resolves nowhere", () => {
+    mockRuntimesData.list = [];
+    mockRuntimesData.shared = [];
+
+    renderPanel({ onClose: vi.fn(), isExpanded: false, setIsExpanded: vi.fn() });
+
+    expect(screen.getByText(/doesn't report a CLI version/i)).toBeInTheDocument();
   });
 
   it("loads the persisted prompt draft when no transient prompt is provided", () => {

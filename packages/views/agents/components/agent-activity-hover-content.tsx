@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ActorAvatar as ActorAvatarBase } from "@multica/ui/components/common/actor-avatar";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { runtimeListOptions } from "@multica/core/runtimes/queries";
+import { runtimeListOptions, sharedRuntimeListOptions } from "@multica/core/runtimes/queries";
 import { agentListOptions } from "@multica/core/workspace/queries";
 import { deriveAgentAvailability } from "@multica/core/agents";
 import type { AgentTask } from "@multica/core/types";
@@ -40,6 +40,8 @@ export function AgentActivityHoverContent({
   const { getActorName, getActorInitials, getActorAvatarUrl } = useActorName();
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
+  // Agents on cross-workspace shared runtimes resolve via the shared list.
+  const { data: sharedRuntimes = [] } = useQuery(sharedRuntimeListOptions());
 
   // Tick `now` once per second so the per-task duration label updates
   // live while the hover card is open. setInterval only runs while the
@@ -54,7 +56,9 @@ export function AgentActivityHoverContent({
   // Build O(1) lookups so each task row resolves agent + runtime without
   // an N×M scan. Cheap — agents/runtimes count in tens at most.
   const agentById = new Map(agents.map((a) => [a.id, a] as const));
-  const runtimeById = new Map(runtimes.map((r) => [r.id, r] as const));
+  const runtimeById = new Map(
+    [...sharedRuntimes, ...runtimes].map((r) => [r.id, r] as const),
+  );
 
   if (tasks.length === 0) return null;
 

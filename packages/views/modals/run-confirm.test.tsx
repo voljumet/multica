@@ -44,6 +44,7 @@ vi.mock("@multica/core/workspace/queries", () => ({
 // is exercised end to end.
 vi.mock("@multica/core/runtimes", () => ({
   runtimeListOptions: (wsId: string) => ({ queryKey: ["runtimes", wsId, "list"] }),
+  sharedRuntimeListOptions: () => ({ queryKey: ["shared-runtimes"] }),
   readRuntimeCliVersion: (m?: { cli_version?: unknown }) =>
     typeof m?.cli_version === "string" ? m.cli_version : "",
   handoffSupported: (v?: string | null) => {

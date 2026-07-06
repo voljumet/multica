@@ -10,7 +10,7 @@ import {
 } from "@multica/core/runtimes";
 import { agentListOptions, memberListOptions } from "@multica/core/workspace/queries";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
-import { runtimeListOptions } from "@multica/core/runtimes/queries";
+import { runtimeListOptions, sharedRuntimeListOptions } from "@multica/core/runtimes/queries";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { ActorAvatar as ActorAvatarBase } from "@multica/ui/components/common/actor-avatar";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
@@ -31,6 +31,9 @@ export function AgentProfileCard({ agentId }: AgentProfileCardProps) {
   const { data: agents = [], isLoading: agentsLoading } = useQuery(agentListOptions(wsId));
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
+  // Fallback for agents on cross-workspace shared runtimes (not in the
+  // workspace list); without it health renders as offline.
+  const { data: sharedRuntimes = [] } = useQuery(sharedRuntimeListOptions());
 
   const agent = agents.find((a) => a.id === agentId);
 
@@ -55,7 +58,10 @@ export function AgentProfileCard({ agentId }: AgentProfileCardProps) {
   const owner = agent.owner_id
     ? members.find((m) => m.user_id === agent.owner_id) ?? null
     : null;
-  const runtime = runtimes.find((r) => r.id === agent.runtime_id) ?? null;
+  const runtime =
+    runtimes.find((r) => r.id === agent.runtime_id) ??
+    sharedRuntimes.find((r) => r.id === agent.runtime_id) ??
+    null;
   const isArchived = !!agent.archived_at;
   const initials = agent.name
     .split(" ")

@@ -45,7 +45,7 @@ import {
   memberListOptions,
   workspaceKeys,
 } from "@multica/core/workspace/queries";
-import { runtimeListOptions } from "@multica/core/runtimes";
+import { runtimeListOptions, sharedRuntimeListOptions } from "@multica/core/runtimes";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import {
@@ -808,6 +808,9 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
   const { data: runtimes = [], isLoading: runtimesLoading } = useQuery(
     runtimeListOptions(wsId),
   );
+  // Shared runtimes from other workspaces aren't in the workspace list but
+  // agents here can run on them; resolve health/CLI version via this fallback.
+  const { data: sharedRuntimes = [] } = useQuery(sharedRuntimeListOptions());
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: runCountsRaw = [] } = useQuery(agentRunCounts30dOptions(wsId));
   const { byAgent: presenceMap } = useWorkspacePresenceMap(wsId);
@@ -848,9 +851,10 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
 
   const runtimesById = useMemo(() => {
     const m = new Map<string, AgentRuntime>();
+    for (const r of sharedRuntimes) m.set(r.id, r);
     for (const r of runtimes) m.set(r.id, r);
     return m;
-  }, [runtimes]);
+  }, [runtimes, sharedRuntimes]);
 
   const runCountsById = useMemo(() => {
     const m = new Map<string, number>();

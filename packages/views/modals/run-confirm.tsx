@@ -19,7 +19,12 @@ import { useUpdateIssue, useBatchUpdateIssues } from "@multica/core/issues/mutat
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { agentListOptions } from "@multica/core/workspace/queries";
-import { runtimeListOptions, readRuntimeCliVersion, handoffSupported } from "@multica/core/runtimes";
+import {
+  runtimeListOptions,
+  sharedRuntimeListOptions,
+  readRuntimeCliVersion,
+  handoffSupported,
+} from "@multica/core/runtimes";
 import { useIssueTriggerPreview } from "../issues/hooks/use-issue-trigger-preview";
 import { useT } from "../i18n";
 
@@ -107,14 +112,18 @@ export function RunConfirmModal({
   const wsId = useWorkspaceId();
   const { data: agents = [] } = useQuery({ ...agentListOptions(wsId), enabled: !!wsId });
   const { data: runtimes = [] } = useQuery({ ...runtimeListOptions(wsId), enabled: !!wsId });
+  // Agents on cross-workspace shared runtimes resolve via the shared list.
+  const { data: sharedRuntimes = [] } = useQuery(sharedRuntimeListOptions());
   const localHandoff = useMemo<boolean | null>(() => {
     if (mode !== "assign" || d.assigneeType !== "agent" || !d.assigneeId) return null;
     const agent = agents.find((a) => a.id === d.assigneeId);
     if (!agent?.runtime_id) return null;
-    const runtime = runtimes.find((r) => r.id === agent.runtime_id);
+    const runtime =
+      runtimes.find((r) => r.id === agent.runtime_id) ??
+      sharedRuntimes.find((r) => r.id === agent.runtime_id);
     if (!runtime) return null;
     return handoffSupported(readRuntimeCliVersion(runtime.metadata));
-  }, [mode, d.assigneeType, d.assigneeId, agents, runtimes]);
+  }, [mode, d.assigneeType, d.assigneeId, agents, runtimes, sharedRuntimes]);
 
   // Soft gate: an old runtime can't render the note. Disable the box but let
   // the assignment proceed (MUL-3375 §6.3). The local verdict resolves it

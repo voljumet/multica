@@ -20,6 +20,7 @@ import { useIssueDraftStore } from "@multica/core/issues/stores/draft-store";
 import { useCreateModeStore } from "@multica/core/issues/stores/create-mode-store";
 import {
   runtimeListOptions,
+  sharedRuntimeListOptions,
   checkQuickCreateCliVersion,
   readRuntimeCliVersion,
   MIN_QUICK_CREATE_CLI_VERSION,
@@ -234,12 +235,16 @@ export function AgentCreatePanel({
   // — frontend and server share the same signal there, so they agree by
   // construction across web/desktop/staging without comparing env flags.
   const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
+  // Cross-workspace shared runtimes aren't in the workspace list, so an agent
+  // copied onto one would read as "no CLI version" without this fallback.
+  const { data: sharedRuntimes = [] } = useQuery(sharedRuntimeListOptions());
   const selectedRuntime = useMemo(
     () =>
       selectedAgent?.runtime_id
-        ? runtimes.find((r) => r.id === selectedAgent.runtime_id)
+        ? runtimes.find((r) => r.id === selectedAgent.runtime_id) ??
+          sharedRuntimes.find((r) => r.id === selectedAgent.runtime_id)
         : undefined,
-    [runtimes, selectedAgent?.runtime_id],
+    [runtimes, sharedRuntimes, selectedAgent?.runtime_id],
   );
   const versionCheck = useMemo(
     () => checkQuickCreateCliVersion(readRuntimeCliVersion(selectedRuntime?.metadata)),
