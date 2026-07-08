@@ -881,6 +881,18 @@ export interface SetAgentSkillsRequest {
   skill_ids: string[];
 }
 
+export interface IssueTaskUsage {
+  task_id: string;
+  created_at: string;
+  comment_triggered: boolean;
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+}
+
 export interface IssueUsageSummary {
   total_input_tokens: number;
   total_output_tokens: number;
@@ -895,6 +907,7 @@ export interface IssueUsageSummary {
   uncosted_cache_read_tokens?: number;
   uncosted_cache_write_tokens?: number;
   task_count: number;
+  tasks: IssueTaskUsage[];
 }
 
 // `cost_usd_ticks` + `uncosted_*`: the cost split every usage row carries.
