@@ -86,6 +86,7 @@
   "row_actions": {
     "cancel_all_tasks": "すべての作業をキャンセル",
     "duplicate": "複製",
+    "deploy_to_workspace": "ワークスペースにデプロイ",
     "restore": "復元",
     "archive": "アーカイブ",
     "set_access": "アクセス範囲を設定",
