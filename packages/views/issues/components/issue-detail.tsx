@@ -79,6 +79,7 @@ import { collectThreadReplies, deriveThreadResolution } from "./thread-utils";
 import { IssueAgentHeaderChip } from "./issue-agent-header-chip";
 import { ExecutionLogSection } from "./execution-log-section";
 import { QuickActionsSection } from "./quick-actions-section";
+import { IssueTokenUsageSection } from "./issue-token-usage-section";
 import { PullRequestList } from "./pull-request-list";
 import { MergeRequestList } from "./merge-request-list";
 import { GitLabIssueBadge } from "./gitlab-issue-badge";
@@ -90,7 +91,7 @@ import { useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useRecentContextStore } from "@multica/core/chat";
-import { issueListOptions, issueDetailOptions, childIssuesOptions, childIssueProgressOptions, issueAttachmentsOptions } from "@multica/core/issues/queries";
+import { issueListOptions, issueDetailOptions, childIssuesOptions, childIssueProgressOptions, issueUsageOptions, issueAttachmentsOptions } from "@multica/core/issues/queries";
 import { projectDetailOptions } from "@multica/core/projects/queries";
 import { ProjectIcon } from "../../projects/components/project-icon";
 import { issueLabelsOptions } from "@multica/core/labels";
@@ -1589,6 +1590,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // `src`/`href` against this list to resolve an attachment id before
   // calling `/api/attachments/{id}`.
   const { data: issueAttachments } = useQuery(issueAttachmentsOptions(id));
+  const { data: usage } = useQuery(issueUsageOptions(id));
 
   // Sub-issue queries
   const parentIssueId = issue?.parent_issue_id;
@@ -2262,12 +2264,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         </div>}
       </div>
 
-      {/* The standalone "Token usage" section that used to sit here is gone:
-          it showed the same issue totals the execution-log header now carries,
-          minus the cost and minus any way to tell which run spent them. Its
-          every field (input / output / cache / run count) lives in the usage
-          dialog that header opens. The `/api/issues/:id/usage` endpoint it
-          read stays — the CLI's `issue usage` command still uses it. */}
+      {/* Token usage */}
+      {usage && <IssueTokenUsageSection usage={usage} />}
 
       {/* Metadata — agent-facing free-form KV bag. The values almost
           never mean anything to humans, so the trigger row matches the
