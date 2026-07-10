@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { IssueTaskUsage, IssueUsageSummary } from "@multica/core/types";
 import { PropRow } from "../../common/prop-row";
@@ -16,7 +16,10 @@ function formatTokenCount(n: number): string {
 interface RunEntry {
   taskId: string;
   commentTriggered: boolean;
-  tokens: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
   cost: number;
 }
 
@@ -26,11 +29,16 @@ function foldRuns(tasks: IssueTaskUsage[]): RunEntry[] {
     const entry = byTask.get(t.task_id) ?? {
       taskId: t.task_id,
       commentTriggered: t.comment_triggered,
-      tokens: 0,
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
       cost: 0,
     };
-    entry.tokens +=
-      t.input_tokens + t.output_tokens + t.cache_read_tokens + t.cache_write_tokens;
+    entry.input += t.input_tokens;
+    entry.output += t.output_tokens;
+    entry.cacheRead += t.cache_read_tokens;
+    entry.cacheWrite += t.cache_write_tokens;
     entry.cost += estimateCost(t);
     byTask.set(t.task_id, entry);
   }
@@ -68,10 +76,16 @@ export function IssueTokenUsageSection({ usage }: { usage: IssueUsageSummary }) 
               <span className="text-muted-foreground">{formatCost(totalCost)}</span>
             </PropRow>
           )}
-          <PropRow label={t(($) => $.detail.prop_input)}>
+          <PropRow
+            label={t(($) => $.detail.prop_input)}
+            title={t(($) => $.detail.prop_input_tooltip)}
+          >
             <span className="text-muted-foreground">{formatTokenCount(usage.total_input_tokens)}</span>
           </PropRow>
-          <PropRow label={t(($) => $.detail.prop_output)}>
+          <PropRow
+            label={t(($) => $.detail.prop_output)}
+            title={t(($) => $.detail.prop_output_tooltip)}
+          >
             <span className="text-muted-foreground">{formatTokenCount(usage.total_output_tokens)}</span>
           </PropRow>
           {(usage.total_cache_read_tokens > 0 || usage.total_cache_write_tokens > 0) && (
@@ -98,21 +112,45 @@ export function IssueTokenUsageSection({ usage }: { usage: IssueUsageSummary }) 
                 <ChevronRight className={`!size-3 shrink-0 transition-transform ${runsOpen ? "rotate-90" : ""}`} />
               </button>
               {runsOpen &&
-                runs.map((run) => (
-                  <PropRow
-                    key={run.taskId}
-                    label={
-                      run.commentTriggered
-                        ? t(($) => $.detail.usage_run_comment)
-                        : t(($) => $.detail.usage_run_assignment)
-                    }
-                  >
-                    <span className="truncate text-muted-foreground">
-                      {formatTokenCount(run.tokens)}
-                      {run.cost > 0 && ` · ${formatCost(run.cost)}`}
-                    </span>
-                  </PropRow>
-                ))}
+                runs.map((run) => {
+                  const segments = [
+                    t(($) => $.detail.usage_seg_input, { n: formatTokenCount(run.input) }),
+                    t(($) => $.detail.usage_seg_output, { n: formatTokenCount(run.output) }),
+                  ];
+                  if (run.cacheWrite > 0) {
+                    segments.push(
+                      t(($) => $.detail.usage_seg_cache_rw, {
+                        read: formatTokenCount(run.cacheRead),
+                        write: formatTokenCount(run.cacheWrite),
+                      }),
+                    );
+                  } else if (run.cacheRead > 0) {
+                    segments.push(
+                      t(($) => $.detail.usage_seg_cache, { n: formatTokenCount(run.cacheRead) }),
+                    );
+                  }
+                  return (
+                    <Fragment key={run.taskId}>
+                      <PropRow
+                        label={
+                          run.commentTriggered
+                            ? t(($) => $.detail.usage_run_comment)
+                            : t(($) => $.detail.usage_run_assignment)
+                        }
+                      >
+                        <span className="truncate text-muted-foreground">
+                          {run.cost > 0 && formatCost(run.cost)}
+                        </span>
+                      </PropRow>
+                      <div
+                        className="col-span-2 truncate pb-1 text-[11px] text-muted-foreground/80"
+                        title={t(($) => $.detail.usage_run_split_tooltip)}
+                      >
+                        {segments.join(" · ")}
+                      </div>
+                    </Fragment>
+                  );
+                })}
             </>
           ) : (
             <PropRow label={t(($) => $.detail.prop_runs)}>

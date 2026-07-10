@@ -61,11 +61,28 @@ describe("IssueTokenUsageSection", () => {
     expect(screen.getByText(/\$0\.06/)).toBeInTheDocument();
   });
 
-  it("expands a per-run breakdown labelled by trigger type", () => {
+  it("expands a per-run breakdown with cost and token split per run", () => {
     render(wrap(<IssueTokenUsageSection usage={USAGE} />));
     fireEvent.click(screen.getByText("2 runs"));
     expect(screen.getByText("Comment")).toBeInTheDocument();
     expect(screen.getByText("Assignment")).toBeInTheDocument();
+    // t2: 2000 in, 100 out, 30k read / 5k write
+    expect(
+      screen.getByText("in 2.0k · out 100 · cache 30.0k read / 5.0k write"),
+    ).toBeInTheDocument();
+    // t2 cost: (2000*3 + 100*15 + 30000*0.3 + 5000*3.75) / 1e6 ≈ $0.035
+    expect(screen.getByText("$0.04")).toBeInTheDocument();
+  });
+
+  it("omits the write part of the cache segment when cache writes are zero", () => {
+    const usage: IssueUsageSummary = {
+      ...USAGE,
+      task_count: 1,
+      tasks: [{ ...USAGE.tasks[0]!, cache_write_tokens: 0 }],
+    };
+    render(wrap(<IssueTokenUsageSection usage={usage} />));
+    fireEvent.click(screen.getByText("1 run"));
+    expect(screen.getByText("in 2.0k · out 100 · cache 30.0k")).toBeInTheDocument();
   });
 
   it("explains cache read/write in a tooltip", () => {
