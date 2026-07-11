@@ -7,6 +7,11 @@ JOIN workspace w ON w.id = m.workspace_id
 WHERE m.user_id = $1
 ORDER BY w.created_at ASC;
 
+-- name: ListWorkspacesWithRepos :many
+SELECT id, name, slug, description, settings, created_at, updated_at, context, repos, issue_prefix, issue_counter, avatar_url
+FROM workspace
+WHERE repos IS NOT NULL AND jsonb_array_length(repos) > 0;
+
 -- name: GetWorkspace :one
 SELECT * FROM workspace
 WHERE id = $1;

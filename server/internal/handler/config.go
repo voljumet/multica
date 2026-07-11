@@ -49,6 +49,8 @@ type AppConfig struct {
 	// FeatureFlags exposes only frontend-safe boolean decisions. Do not dump
 	// raw rules here: /api/config is public and may be called anonymously.
 	FeatureFlags map[string]bool `json:"feature_flags,omitempty"`
+	// GitLabEnabled signals that GitLab OAuth is configured on this instance.
+	GitLabEnabled bool `json:"gitlab_enabled,omitempty"`
 }
 
 // GetConfig is mounted on the public (unauthenticated) route group because

@@ -565,6 +565,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		}
 	} else {
 		slog.Info("composio integration disabled (COMPOSIO_API_KEY not set)")
+	}
 	// GitLab integration token encryption. Nil when GITLAB_SECRET_KEY is unset;
 	// the GitLab OAuth handlers return a clear error in that case.
 	if gitlabKey, err := secretbox.LoadKey("GITLAB_SECRET_KEY"); err == nil {
