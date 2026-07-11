@@ -650,8 +650,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		slog.Info("vcs integration disabled (MULTICA_VCS_SECRET_KEY not set)")
 	}
 
-	// GitLab integration token encryption. ponytail: kept alongside VCSSecretBox
-	// until GitLab handlers are ported to use h.VCSSecretBox.
+	// GitLab integration token encryption. Nil when GITLAB_SECRET_KEY is unset;
+	// the GitLab OAuth handlers return a clear error in that case.
 	if gitlabKey, err := secretbox.LoadKey("GITLAB_SECRET_KEY"); err == nil {
 		box, err := secretbox.New(gitlabKey)
 		if err != nil {
