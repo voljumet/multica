@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -227,11 +229,10 @@ func (b *grokBackend) Execute(ctx context.Context, prompt string, opts ExecOptio
 
 // buildGrokArgs assembles argv for a one-shot headless grok invocation:
 //
-//	grok --no-auto-update -p "<prompt>" --output-format streaming-json --always-approve
+//	grok -p "<prompt>" --output-format streaming-json --always-approve
 //	     [--cwd <dir>] [--model <model>] [--resume <session-id>] [--reasoning-effort <level>]
 func buildGrokArgs(prompt string, opts ExecOptions, logger *slog.Logger) []string {
 	args := []string{
-		"--no-auto-update",
 		"-p", prompt,
 		"--output-format", "streaming-json",
 		"--always-approve",
@@ -252,7 +253,115 @@ func buildGrokArgs(prompt string, opts ExecOptions, logger *slog.Logger) []strin
 	return args
 }
 
-var grokModelLineRe = regexp.MustCompile(`^\s*[\*\-]\s+(\S+)(?:\s+\(default\))?\s*$`)
+var (
+	grokModelLineRe = regexp.MustCompile(`^\s*[\*\-]\s+(\S+)(?:\s+\(default\))?\s*$`)
+	grokModelIDRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+)
+
+// IsGrokBuildCLI reports whether executablePath is the xAI Grok Build binary.
+// Unrelated third-party CLIs also install a `grok` command; they must be
+// rejected so the daemon does not register the wrong runtime.
+func IsGrokBuildCLI(ctx context.Context, executablePath string) bool {
+	if strings.TrimSpace(executablePath) == "" {
+		return false
+	}
+	runCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(runCtx, executablePath, "--help")
+	hideAgentWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+	s := string(out)
+	return strings.Contains(s, "Grok Build") && strings.Contains(s, "--output-format")
+}
+
+// ResolveGrokBuildExecutable finds the xAI Grok Build binary. When cmd is a
+// bare name it prefers the official ~/.grok/bin/grok install over unrelated
+// `grok` binaries that may appear earlier on PATH (e.g. npm global installs).
+// An absolute or relative cmd that fails validation is not silently replaced.
+func ResolveGrokBuildExecutable(ctx context.Context, cmd string, extraCandidates ...string) (string, bool) {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		cmd = "grok"
+	}
+	pinned := strings.ContainsAny(cmd, "/\\")
+	if pinned {
+		path := cmd
+		if resolved, err := exec.LookPath(cmd); err == nil {
+			path = resolved
+		}
+		if IsGrokBuildCLI(ctx, path) {
+			return path, true
+		}
+		return "", false
+	}
+
+	seen := make(map[string]struct{})
+	var candidates []string
+	add := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		candidates = append(candidates, path)
+	}
+
+	for _, p := range grokBuildInstallPaths() {
+		add(p)
+	}
+	for _, p := range extraCandidates {
+		add(p)
+	}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			dir = "."
+		}
+		add(filepath.Join(dir, cmd))
+	}
+
+	for _, path := range candidates {
+		if !isExecutableFile(path) {
+			continue
+		}
+		if IsGrokBuildCLI(ctx, path) {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+func grokBuildInstallPaths() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	return []string{filepath.Join(home, ".grok", "bin", "grok")}
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return info.Mode()&0o111 != 0
+}
+
+func grokModelIDValid(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	if strings.Contains(id, "/") || strings.Contains(id, "\\") ||
+		strings.Contains(id, "node_modules") || strings.HasPrefix(id, "file:") {
+		return false
+	}
+	return grokModelIDRe.MatchString(id)
+}
 
 // discoverGrokModels runs `grok models` and parses the human-readable catalog.
 // On any failure it falls back to a short static list so the UI still works.
@@ -260,7 +369,9 @@ func discoverGrokModels(ctx context.Context, executablePath string) ([]Model, er
 	if executablePath == "" {
 		executablePath = "grok"
 	}
-	if _, err := exec.LookPath(executablePath); err != nil {
+	if path, ok := ResolveGrokBuildExecutable(ctx, executablePath); ok {
+		executablePath = path
+	} else if _, err := exec.LookPath(executablePath); err != nil {
 		return grokStaticModels(), nil
 	}
 
@@ -273,10 +384,14 @@ func discoverGrokModels(ctx context.Context, executablePath string) ([]Model, er
 	if err != nil {
 		return grokStaticModels(), nil
 	}
+	raw := string(out)
+	if !strings.Contains(raw, "Available models:") {
+		return grokStaticModels(), nil
+	}
 
 	var models []Model
 	var defaultID string
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "Default model:") {
 			defaultID = strings.TrimSpace(strings.TrimPrefix(line, "Default model:"))
@@ -287,7 +402,7 @@ func discoverGrokModels(ctx context.Context, executablePath string) ([]Model, er
 			continue
 		}
 		id := strings.TrimSpace(m[1])
-		if id == "" {
+		if !grokModelIDValid(id) {
 			continue
 		}
 		model := Model{ID: id, Label: id, Provider: "xai"}

@@ -33,7 +33,6 @@ func TestBuildGrokArgs(t *testing.T) {
 	}, logger)
 
 	want := []string{
-		"--no-auto-update",
 		"-p", "hello world",
 		"--output-format", "streaming-json",
 		"--always-approve",
@@ -165,6 +164,114 @@ exit 1
 	}
 	if !models[0].Default || models[0].ID != "grok-composer-2.5-fast" {
 		t.Fatalf("default model = %#v", models[0])
+	}
+}
+
+func TestIsGrokBuildCLIDistinguishesOfficialBinary(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	official := filepath.Join(dir, "grok-official")
+	other := filepath.Join(dir, "grok-other")
+	if err := os.WriteFile(official, []byte("#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  echo 'Grok Build TUI'\n  echo '  --output-format <OUTPUT_FORMAT>'\nfi\n"), 0o755); err != nil {
+		t.Fatalf("write official stub: %v", err)
+	}
+	if err := os.WriteFile(other, []byte("#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  echo 'Grok CLI Conversational Assistant'\nfi\n"), 0o755); err != nil {
+		t.Fatalf("write other stub: %v", err)
+	}
+	if !IsGrokBuildCLI(context.Background(), official) {
+		t.Fatal("expected official stub to be recognized as Grok Build")
+	}
+	if IsGrokBuildCLI(context.Background(), other) {
+		t.Fatal("expected unrelated grok stub to be rejected")
+	}
+}
+
+func TestResolveGrokBuildExecutablePrefersGrokBuildOnPATH(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	officialDir := filepath.Join(dir, "official", "bin")
+	otherDir := filepath.Join(dir, "other", "bin")
+	for _, d := range []string{officialDir, otherDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	official := filepath.Join(officialDir, "grok")
+	other := filepath.Join(otherDir, "grok")
+	if err := os.WriteFile(official, []byte("#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  echo 'Grok Build TUI'\n  echo '  --output-format streaming-json'\nfi\n"), 0o755); err != nil {
+		t.Fatalf("write official: %v", err)
+	}
+	if err := os.WriteFile(other, []byte("#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  echo 'Grok CLI Conversational Assistant'\nfi\n"), 0o755); err != nil {
+		t.Fatalf("write other: %v", err)
+	}
+
+	t.Setenv("PATH", otherDir+string(os.PathListSeparator)+officialDir)
+	path, ok := ResolveGrokBuildExecutable(context.Background(), "grok")
+	if !ok {
+		t.Fatal("expected grok resolution to succeed")
+	}
+	if path != official {
+		t.Fatalf("ResolveGrokBuildExecutable() = %q, want Grok Build binary %q", path, official)
+	}
+}
+
+func TestResolveGrokBuildExecutablePrefersDotGrokInstall(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	installDir := filepath.Join(dir, ".grok", "bin")
+	otherDir := filepath.Join(dir, "other", "bin")
+	for _, d := range []string{installDir, otherDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+	}
+	official := filepath.Join(installDir, "grok")
+	other := filepath.Join(otherDir, "grok")
+	if err := os.WriteFile(official, []byte("#!/bin/sh\nif [ \"$1\" = \"--help\" ]; then\n  echo 'Grok Build TUI'\n  echo '  --output-format streaming-json'\nfi\n"), 0o755); err != nil {
+		t.Fatalf("write official: %v", err)
+	}
+	if err := os.WriteFile(other, []byte("#!/bin/sh\necho ok\n"), 0o755); err != nil {
+		t.Fatalf("write other: %v", err)
+	}
+	t.Setenv("PATH", otherDir)
+
+	path, ok := ResolveGrokBuildExecutable(context.Background(), "grok")
+	if !ok {
+		t.Fatal("expected grok resolution to succeed")
+	}
+	if path != official {
+		t.Fatalf("ResolveGrokBuildExecutable() = %q, want ~/.grok/bin/grok %q", path, official)
+	}
+}
+
+func TestDiscoverGrokModelsRejectsGarbageOutput(t *testing.T) {
+	t.Parallel()
+	fakePath := filepath.Join(t.TempDir(), "grok")
+	script := `#!/bin/sh
+if [ "$1" = "models" ]; then
+  cat <<'EOF'
+  - /opt/homebrew/lib/node_modules/@vibe-kit/grok-cli/node_modules/react-reconc
+  * (file:///opt/homebrew/lib/node_modules/@vibe-kit/grok-cli/node_modules/ink/b
+EOF
+  exit 0
+fi
+if [ "$1" = "--help" ]; then
+  echo "Grok Build TUI"
+  echo "  --output-format streaming-json"
+fi
+exit 1
+`
+	if err := os.WriteFile(fakePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake grok: %v", err)
+	}
+
+	models, err := discoverGrokModels(context.Background(), fakePath)
+	if err != nil {
+		t.Fatalf("discoverGrokModels: %v", err)
+	}
+	want := grokStaticModels()
+	if len(models) != len(want) || models[0].ID != want[0].ID {
+		t.Fatalf("models = %#v, want static fallback %#v", models, want)
 	}
 }
 

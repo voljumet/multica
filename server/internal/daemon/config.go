@@ -15,6 +15,7 @@ import (
 	"github.com/mattn/go-shellwords"
 
 	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/pkg/agent"
 )
 
 const (
@@ -314,8 +315,14 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	// xAI Grok Build (https://docs.x.ai/build/overview), driven headlessly via
 	// `grok -p … --output-format streaming-json`. MULTICA_GROK_MODEL seeds the
 	// daemon-wide default model (an id from `grok models`, e.g. grok-build).
-	if e, ok := probe("MULTICA_GROK_PATH", "grok", "MULTICA_GROK_MODEL"); ok {
-		agents["grok"] = e
+	// Resolve via ResolveGrokBuildExecutable so an unrelated npm `grok` binary
+	// on PATH (e.g. @vibe-kit/grok-cli) is not mistaken for Grok Build.
+	grokCmd := envOrDefault("MULTICA_GROK_PATH", "grok")
+	if path, ok := agent.ResolveGrokBuildExecutable(context.Background(), grokCmd, getShellResolved()["grok"]); ok {
+		agents["grok"] = AgentEntry{
+			Path:  path,
+			Model: strings.TrimSpace(os.Getenv("MULTICA_GROK_MODEL")),
+		}
 	}
 	if len(agents) == 0 {
 		return Config{}, fmt.Errorf("no agent CLI found: install claude, codebuddy, codex, copilot, opencode, openclaw, hermes, pi, cursor-agent, kimi, kiro-cli, agy, qodercli, traecli, or grok and ensure it is on PATH")
