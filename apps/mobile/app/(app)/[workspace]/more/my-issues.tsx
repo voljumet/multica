@@ -77,7 +77,12 @@ export default function MyIssuesPage() {
   });
 
   const filtered = useMemo(() => {
-    const f = filterIssues(data ?? [], statusFilters, priorityFilters);
+    const f = filterIssues(data ?? [], {
+      statusFilters,
+      priorityFilters,
+      projectFilters: [],
+      includeNoProject: false,
+    });
     if (!sortByLastEdited) return f;
     return [...f].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   }, [data, statusFilters, priorityFilters, sortByLastEdited]);

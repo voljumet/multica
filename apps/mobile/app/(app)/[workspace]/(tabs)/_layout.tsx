@@ -75,12 +75,12 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen
-          name="projects"
+          name="issues"
           options={{
-            title: "Projects",
-            tabBarIcon: ({ color, size, focused }) => (
+            title: "Issues",
+            tabBarIcon: ({ color, size }) => (
               <Image
-                source={focused ? "sf:square.stack.fill" : "sf:square.stack"}
+                source="sf:list.bullet"
                 tintColor={color}
                 style={{ width: size, height: size }}
               />
@@ -88,12 +88,12 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="issues"
+          name="projects"
           options={{
-            title: "Issues",
-            tabBarIcon: ({ color, size }) => (
+            title: "Projects",
+            tabBarIcon: ({ color, size, focused }) => (
               <Image
-                source="sf:list.bullet"
+                source={focused ? "sf:square.stack.fill" : "sf:square.stack"}
                 tintColor={color}
                 style={{ width: size, height: size }}
               />

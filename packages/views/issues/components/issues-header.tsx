@@ -649,15 +649,62 @@ export function ViewRefreshIndicator({ active }: { active: boolean }) {
 // IssuesHeader
 // ---------------------------------------------------------------------------
 
+function ProjectScopeFilterButton({ scopedIssues }: { scopedIssues: Issue[] }) {
+  const { t } = useT("issues");
+  const projectFilters = useViewStore((s) => s.projectFilters);
+  const includeNoProject = useViewStore((s) => s.includeNoProject);
+  const act = useViewStoreApi().getState();
+  const counts = useIssueCounts(scopedIssues);
+  const active =
+    projectFilters.length > 0 || includeNoProject;
+  const activeCount =
+    projectFilters.length + (includeNoProject ? 1 : 0);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className={
+              active
+                ? "bg-accent text-accent-foreground hover:bg-accent/80"
+                : "text-muted-foreground"
+            }
+          >
+            {t(($) => $.filters.section_project)}
+            {active && (
+              <span className="ml-1 text-xs tabular-nums">{activeCount}</span>
+            )}
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="start" className="w-auto min-w-52 p-0">
+        <ProjectSubContent
+          counts={counts.project}
+          selected={projectFilters}
+          onToggle={act.toggleProjectFilter}
+          includeNoProject={includeNoProject}
+          onToggleNoProject={act.toggleNoProject}
+          noProjectCount={counts.noProject}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function IssuesHeader({
   scopedIssues,
   allowGantt = false,
+  showProjectFilter = true,
   dateFilter = null,
   onDateFilterChange,
   isRefreshing = false,
 }: {
   scopedIssues: Issue[];
   allowGantt?: boolean;
+  showProjectFilter?: boolean;
   dateFilter?: IssueDateFilter | null;
   onDateFilterChange?: (filter: IssueDateFilter | null) => void;
   isRefreshing?: boolean;
@@ -720,8 +767,12 @@ export function IssuesHeader({
               <TooltipContent side="bottom">{t(($) => $.scope[SCOPE_DESC_KEY[s]])}</TooltipContent>
             </Tooltip>
           ))}
+          {showProjectFilter ? (
+            <ProjectScopeFilterButton scopedIssues={scopedIssues} />
+          ) : null}
         </div>
 
+        <div className="flex shrink-0 items-center gap-1 md:hidden">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -745,6 +796,10 @@ export function IssuesHeader({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+        {showProjectFilter ? (
+          <ProjectScopeFilterButton scopedIssues={scopedIssues} />
+        ) : null}
+        </div>
 
         <div className="flex shrink-0 items-center gap-1">
           {agentRunningFilter && (

@@ -4,9 +4,9 @@
  *
  * Mirrors web `packages/views/issues/components/issues-page.tsx:32-94`:
  * fetch every issue in the workspace, expose `all / members / agents`
- * scope tabs, group by status, allow status + priority filtering.
+ * scope tabs, group by status, allow status + priority + project filtering.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Pressable, SectionList, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -20,12 +20,13 @@ import { StatusIcon } from "@/components/ui/status-icon";
 import { IssueRow } from "@/components/issue/issue-row";
 import { IssuesLoading } from "@/components/issue/issues-loading";
 import { issueListOptions } from "@/data/queries/issues";
+import { projectListOptions } from "@/data/queries/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import {
   useIssuesViewStore,
   type IssuesScope,
 } from "@/data/stores/issues-view-store";
-import { useClearFiltersOnWorkspaceChange } from "@/lib/use-clear-filters-on-workspace-change";
+
 import {
   BOARD_STATUSES,
   PRIORITY_LABEL,
@@ -51,9 +52,26 @@ export default function IssuesTab() {
   const setScope = useIssuesViewStore((s) => s.setScope);
   const statusFilters = useIssuesViewStore((s) => s.statusFilters);
   const priorityFilters = useIssuesViewStore((s) => s.priorityFilters);
+  const projectFilters = useIssuesViewStore((s) => s.projectFilters);
+  const includeNoProject = useIssuesViewStore((s) => s.includeNoProject);
   const sortByLastEdited = useIssuesViewStore((s) => s.sortByLastEdited);
   const collapsedStatuses = useIssuesViewStore((s) => s.collapsedStatuses);
   const toggleStatusCollapse = useIssuesViewStore((s) => s.toggleStatusCollapse);
+  const hydrateForWorkspace = useIssuesViewStore((s) => s.hydrateForWorkspace);
+
+  useEffect(() => {
+    if (wsSlug) void hydrateForWorkspace(wsSlug);
+  }, [wsSlug, hydrateForWorkspace]);
+
+  const { data: projects = [] } = useQuery(projectListOptions(wsId));
+
+  const openProjectFilter = () => {
+    if (!wsSlug) return;
+    router.push({
+      pathname: "/[workspace]/issues-project-filter",
+      params: { workspace: wsSlug },
+    });
+  };
 
   const openFilter = () => {
     if (!wsSlug) return;
@@ -62,11 +80,6 @@ export default function IssuesTab() {
       params: { workspace: wsSlug, scope: "all" },
     });
   };
-
-  useClearFiltersOnWorkspaceChange(
-    useIssuesViewStore.getState().clearFilters,
-    wsId,
-  );
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery(
     issueListOptions(wsId),
@@ -87,10 +100,22 @@ export default function IssuesTab() {
   }, [allIssues, scope]);
 
   const filtered = useMemo(() => {
-    const f = filterIssues(scopedIssues, statusFilters, priorityFilters);
+    const f = filterIssues(scopedIssues, {
+      statusFilters,
+      priorityFilters,
+      projectFilters,
+      includeNoProject,
+    });
     if (!sortByLastEdited) return f;
     return [...f].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-  }, [scopedIssues, statusFilters, priorityFilters, sortByLastEdited]);
+  }, [
+    scopedIssues,
+    statusFilters,
+    priorityFilters,
+    projectFilters,
+    includeNoProject,
+    sortByLastEdited,
+  ]);
 
   const sections = useMemo<IssueSection[]>(() => {
     if (filtered.length === 0) return [];
@@ -122,7 +147,20 @@ export default function IssuesTab() {
   );
 
   const hasActiveFilters =
-    statusFilters.length > 0 || priorityFilters.length > 0 || sortByLastEdited;
+    statusFilters.length > 0 ||
+    priorityFilters.length > 0 ||
+    projectFilters.length > 0 ||
+    includeNoProject ||
+    sortByLastEdited;
+
+  const hasActiveProjectFilter =
+    projectFilters.length > 0 || includeNoProject;
+
+  const projectTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of projects) map.set(p.id, p.title);
+    return map;
+  }, [projects]);
 
   const showEmptyState = !isLoading && !error && filtered.length === 0;
 
@@ -133,6 +171,8 @@ export default function IssuesTab() {
         scopes={SCOPES}
         scope={scope}
         onChange={(v) => setScope(v)}
+        onOpenProjectFilter={openProjectFilter}
+        hasActiveProjectFilter={hasActiveProjectFilter}
         onOpenFilter={openFilter}
         hasActiveFilters={hasActiveFilters}
       />
@@ -140,11 +180,20 @@ export default function IssuesTab() {
         <ActiveFilterChips
           statusFilters={statusFilters}
           priorityFilters={priorityFilters}
+          projectFilters={projectFilters}
+          includeNoProject={includeNoProject}
+          projectTitleById={projectTitleById}
           onClearStatus={(s) =>
             useIssuesViewStore.getState().toggleStatusFilter(s)
           }
           onClearPriority={(p) =>
             useIssuesViewStore.getState().togglePriorityFilter(p)
+          }
+          onClearProject={(id) =>
+            useIssuesViewStore.getState().toggleProjectFilter(id)
+          }
+          onClearNoProject={() =>
+            useIssuesViewStore.getState().toggleNoProject()
           }
         />
       ) : null}
@@ -238,12 +287,16 @@ function ScopeToolbar<S extends string>({
   scopes,
   scope,
   onChange,
+  onOpenProjectFilter,
+  hasActiveProjectFilter,
   onOpenFilter,
   hasActiveFilters,
 }: {
   scopes: { value: S; label: string }[];
   scope: S;
   onChange: (value: S) => void;
+  onOpenProjectFilter: () => void;
+  hasActiveProjectFilter: boolean;
   onOpenFilter: () => void;
   hasActiveFilters: boolean;
 }) {
@@ -270,6 +323,32 @@ function ScopeToolbar<S extends string>({
             </Button>
           );
         })}
+        <View style={{ position: "relative" }}>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={onOpenProjectFilter}
+            className={hasActiveProjectFilter ? "bg-accent" : ""}
+            accessibilityLabel="Filter by project"
+          >
+            <Text
+              numberOfLines={1}
+              className={
+                hasActiveProjectFilter
+                  ? "text-accent-foreground"
+                  : "text-muted-foreground"
+              }
+            >
+              Projects
+            </Text>
+          </Button>
+          {hasActiveProjectFilter ? (
+            <View
+              pointerEvents="none"
+              className="absolute top-1 right-1 size-1.5 rounded-full bg-brand"
+            />
+          ) : null}
+        </View>
       </View>
       <FilterButton
         onPress={onOpenFilter}
@@ -282,13 +361,23 @@ function ScopeToolbar<S extends string>({
 function ActiveFilterChips({
   statusFilters,
   priorityFilters,
+  projectFilters,
+  includeNoProject,
+  projectTitleById,
   onClearStatus,
   onClearPriority,
+  onClearProject,
+  onClearNoProject,
 }: {
   statusFilters: IssueStatus[];
   priorityFilters: IssuePriority[];
+  projectFilters: string[];
+  includeNoProject: boolean;
+  projectTitleById: Map<string, string>;
   onClearStatus: (s: IssueStatus) => void;
   onClearPriority: (p: IssuePriority) => void;
+  onClearProject: (id: string) => void;
+  onClearNoProject: () => void;
 }) {
   return (
     <View className="flex-row flex-wrap gap-1.5 px-4 pb-2">
@@ -304,6 +393,16 @@ function ActiveFilterChips({
           key={`p-${p}`}
           label={PRIORITY_LABEL[p]}
           onClear={() => onClearPriority(p)}
+        />
+      ))}
+      {includeNoProject ? (
+        <Chip label="No project" onClear={onClearNoProject} />
+      ) : null}
+      {projectFilters.map((id) => (
+        <Chip
+          key={`proj-${id}`}
+          label={projectTitleById.get(id) ?? "Project"}
+          onClear={() => onClearProject(id)}
         />
       ))}
     </View>

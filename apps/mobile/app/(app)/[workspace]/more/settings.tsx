@@ -62,7 +62,7 @@ export default function SettingsPage() {
   const onSwitch = async (ws: Workspace) => {
     if (ws.slug === currentSlug) return;
     await setCurrentWorkspace(ws.id, ws.slug);
-    router.replace(`/${ws.slug}/inbox`);
+    router.replace(`/${ws.slug}/issues`);
   };
 
   const onSignOut = () => {

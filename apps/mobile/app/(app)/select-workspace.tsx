@@ -17,7 +17,7 @@ export default function SelectWorkspace() {
 
   const onSelect = async (id: string, slug: string) => {
     await setCurrentWorkspace(id, slug);
-    router.replace(`/${slug}/inbox`);
+    router.replace(`/${slug}/issues`);
   };
 
   return (
