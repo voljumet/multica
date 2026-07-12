@@ -141,7 +141,7 @@ services:
       MULTICA_VCS_INTEGRATION_ENABLED: ${MULTICA_VCS_INTEGRATION_ENABLED:-true}
       # VCS integration at-rest encryption key for token-based providers
       MULTICA_VCS_SECRET_KEY: ${MULTICA_VCS_SECRET_KEY:-}
-      # GitLab OAuth integration (legacy)
+      # GitLab OAuth integration
       GITLAB_URL: ${GITLAB_URL:-}
       GITLAB_APP_ID: ${GITLAB_APP_ID:-}
       GITLAB_APP_SECRET: ${GITLAB_APP_SECRET:-}
