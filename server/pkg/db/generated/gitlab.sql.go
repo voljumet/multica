@@ -83,6 +83,20 @@ func (q *Queries) DeleteGitLabConnection(ctx context.Context, arg DeleteGitLabCo
 	return err
 }
 
+const deleteGitLabIssueByIssueID = `-- name: DeleteGitLabIssueByIssueID :exec
+DELETE FROM gitlab_issue WHERE issue_id = $1 AND workspace_id = $2
+`
+
+type DeleteGitLabIssueByIssueIDParams struct {
+	IssueID     pgtype.UUID `json:"issue_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+func (q *Queries) DeleteGitLabIssueByIssueID(ctx context.Context, arg DeleteGitLabIssueByIssueIDParams) error {
+	_, err := q.db.Exec(ctx, deleteGitLabIssueByIssueID, arg.IssueID, arg.WorkspaceID)
+	return err
+}
+
 const getFirstGitLabConnectionByWorkspace = `-- name: GetFirstGitLabConnectionByWorkspace :one
 SELECT id, workspace_id, namespace, namespace_type, avatar_url, access_token, token_expires_at, connected_by_id, created_at, updated_at, refresh_token FROM gitlab_connection WHERE workspace_id = $1 LIMIT 1
 `
