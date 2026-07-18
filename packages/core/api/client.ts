@@ -148,6 +148,7 @@ import type {
   ListVCSConnectionsResponse,
   ConnectVCSRequest,
   ConnectVCSResponse,
+  GitLabConnection,
   GitLabMergeRequest,
   GitLabIssue,
   ListGitLabConnectionsResponse,
@@ -3299,6 +3300,16 @@ export class ApiClient {
     await this.fetch(`/api/workspaces/${workspaceId}/gitlab/connections/${connectionId}`, {
       method: "DELETE",
     });
+  }
+
+  async rotateGitLabConnectionWebhookSecret(
+    workspaceId: string,
+    connectionId: string,
+  ): Promise<GitLabConnection> {
+    return this.fetch(
+      `/api/workspaces/${workspaceId}/gitlab/connections/${connectionId}/rotate-webhook-secret`,
+      { method: "POST" },
+    );
   }
 
   async listIssueMergeRequests(issueId: string): Promise<{ merge_requests: GitLabMergeRequest[] }> {
