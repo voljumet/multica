@@ -4871,10 +4871,6 @@ func (s *TaskService) createAgentComment(ctx context.Context, issueID, agentID p
 		},
 	})
 	s.AutoUnresolveThreadOnReply(ctx, rootComment, util.UUIDToString(issue.WorkspaceID), "agent", util.UUIDToString(agentID))
-
-	if s.PostCommentToGitLab != nil {
-		go s.PostCommentToGitLab(context.Background(), comment, issue)
-	}
 }
 
 // AutoUnresolveThreadOnReply clears resolved_at on the thread root when a

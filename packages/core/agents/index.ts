@@ -6,6 +6,7 @@ export * from "./builder-protocol";
 export * from "./derive-presence";
 export * from "./failure-reason";
 export * from "./effective-access";
+export * from "./identity";
 export * from "./queries";
 export * from "./mutations";
 export * from "./use-agent-presence";
