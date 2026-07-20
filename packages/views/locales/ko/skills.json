@@ -75,7 +75,12 @@
     "cancel": "취소",
     "add_confirm": "추가 ({{num}})",
     "adding": "추가 중...",
-    "added_multi_toast_other": "에이전트 {{count}}개에 추가했습니다"
+    "added_multi_toast_other": "에이전트 {{count}}개에 추가했습니다",
+    "refresh_from_url": "URL에서 업데이트",
+    "refresh_from_url_tooltip": "소스 URL에서 스킬을 다시 가져와 로컬 내용을 교체합니다",
+    "refreshing": "업데이트 중…",
+    "refreshed_toast": "URL에서 스킬을 업데이트했습니다",
+    "refresh_failed_toast": "URL에서 스킬 업데이트에 실패했습니다"
   },
   "toolbar": {
     "result_count_title": "일치하는 스킬 / 전체 스킬",
@@ -144,7 +149,9 @@
       "imported_clawhub": "ClawHub에서 가져옴",
       "imported_skills_sh": "Skills.sh에서 가져옴",
       "imported_github": "GitHub에서 가져옴",
-      "provider": "제공자 · {{provider}}"
+      "provider": "제공자 · {{provider}}",
+      "refresh_from_url": "URL에서 업데이트",
+      "refreshing": "업데이트 중…"
     },
     "not_found": {
       "title": "스킬을 찾을 수 없습니다",

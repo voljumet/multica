@@ -10,6 +10,7 @@ import {
   Lock,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   Sparkles,
   Trash2,
@@ -63,11 +64,17 @@ import { BreadcrumbHeader } from "../../layout/breadcrumb-header";
 import { useCanEditSkill } from "../hooks/use-can-edit-skill";
 import { useSkillPermissions } from "@multica/core/permissions";
 import { CapabilityBanner } from "@multica/ui/components/common/capability-banner";
-import { readOrigin, totalFileCount, type OriginInfo } from "../lib/origin";
+import {
+  canRefreshFromURL,
+  readOrigin,
+  totalFileCount,
+  type OriginInfo,
+} from "../lib/origin";
 import { FileTree } from "./file-tree";
 import { FileViewer } from "./file-viewer";
 import {
   AddToAgentDialog,
+  refreshSkillFromURL,
   type SkillActionsContext,
 } from "./skill-list-actions";
 import { useT } from "../../i18n";
@@ -194,9 +201,15 @@ function UsedBySection({ agents }: { agents: Agent[] }) {
 function OriginSidebarCard({
   origin,
   runtime,
+  canRefresh,
+  refreshing,
+  onRefresh,
 }: {
   origin: OriginInfo;
   runtime: AgentRuntime | null;
+  canRefresh: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
 }) {
   const { t } = useT("skills");
   if (origin.type === "manual") return null;
@@ -240,6 +253,28 @@ function OriginSidebarCard({
         <div className="mt-1 font-mono text-xs text-muted-foreground">
           {t(($) => $.detail.origin_card.provider, { provider: origin.provider })}
         </div>
+      )}
+      {canRefresh && (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          className="mt-2 w-full"
+          disabled={refreshing}
+          onClick={onRefresh}
+        >
+          {refreshing ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t(($) => $.detail.origin_card.refreshing)}
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-3 w-3" />
+              {t(($) => $.detail.origin_card.refresh_from_url)}
+            </>
+          )}
+        </Button>
       )}
     </div>
   );
@@ -305,6 +340,7 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
   const [showAddToAgents, setShowAddToAgents] = useState(false);
   const [addingFile, setAddingFile] = useState(false);
   const [conflictPending, setConflictPending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const draftRef = useRef({ name, description, content, files });
   draftRef.current = { name, description, content, files };
@@ -458,6 +494,25 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
     seedFromSkill(skill);
     seededKeyRef.current = `${wsId}:${skill.id}@${skill.updated_at}`;
     setConflictPending(false);
+  };
+
+  const handleRefreshFromURL = async () => {
+    if (!skill || !canEdit || refreshing) return;
+    setRefreshing(true);
+    try {
+      const updated = await refreshSkillFromURL(skill, wsId, qc);
+      // Re-seed the draft so the editor shows the new content.
+      seedFromSkill(updated);
+      seededKeyRef.current = `${wsId}:${updated.id}@${updated.updated_at}`;
+      setConflictPending(false);
+      toast.success(t(($) => $.actions.refreshed_toast));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : t(($) => $.actions.refresh_failed_toast),
+      );
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -889,7 +944,13 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {t(($) => $.detail.sidebar.origin)}
               </h3>
-              <OriginSidebarCard origin={origin} runtime={originRuntime} />
+              <OriginSidebarCard
+                origin={origin}
+                runtime={originRuntime}
+                canRefresh={canEdit && canRefreshFromURL(skill)}
+                refreshing={refreshing}
+                onRefresh={handleRefreshFromURL}
+              />
             </div>
           )}
 

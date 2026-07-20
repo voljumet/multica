@@ -1885,6 +1885,13 @@ export class ApiClient {
     });
   }
 
+  /** Re-fetch a URL-imported skill from config.origin.source_url and overwrite content. */
+  async refreshSkillFromURL(id: string): Promise<Skill> {
+    return this.fetch(`/api/skills/${id}/refresh`, {
+      method: "POST",
+    });
+  }
+
   async listAgentSkills(agentId: string): Promise<SkillSummary[]> {
     return this.fetch(`/api/agents/${agentId}/skills`);
   }

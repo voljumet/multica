@@ -87,7 +87,12 @@
     "cancel": "取消",
     "add_confirm": "添加（{{num}}）",
     "adding": "添加中...",
-    "added_multi_toast_other": "已添加到 {{count}} 个智能体"
+    "added_multi_toast_other": "已添加到 {{count}} 个智能体",
+    "refresh_from_url": "从 URL 更新",
+    "refresh_from_url_tooltip": "从源 URL 重新拉取 skill，并覆盖本地内容",
+    "refreshing": "更新中…",
+    "refreshed_toast": "已从 URL 更新 skill",
+    "refresh_failed_toast": "从 URL 更新 skill 失败"
   },
   "toolbar": {
     "result_count_title": "当前结果 / 全部 skill",
@@ -156,7 +161,9 @@
       "imported_clawhub": "从 ClawHub 导入",
       "imported_skills_sh": "从 Skills.sh 导入",
       "imported_github": "从 GitHub 导入",
-      "provider": "provider · {{provider}}"
+      "provider": "provider · {{provider}}",
+      "refresh_from_url": "从 URL 更新",
+      "refreshing": "更新中…"
     },
     "not_found": {
       "title": "未找到该 skill",

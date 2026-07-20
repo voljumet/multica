@@ -21,7 +21,7 @@ Connect a GitLab group once in **Settings → GitLab**. After that:
 | **Issue webhook** | On `Issue Hook` with the configured sync trigger label (default **agent**): creates the Multica issue (if new) and syncs description/assignee. Close/reopen still update status on already-linked issues. |
 | **Comment import** | New GitLab comments appear in Multica. Multica does **not** auto-post Multica comments back to GitLab (agents can post to GitLab with their own credentials). Historical comments at the time of labeling are **not** imported. |
 | **Auto-status on MR merge** | When an MR transitions to `merged` and its reference used a closing keyword (`Closes MUL-1`, `Fixes MUL-1`, `Resolves MUL-1`), Multica moves the linked issue to **Done**. |
-| **Auto-status on issue close/reopen** | Closing a synced GitLab issue marks the Multica issue **Done**. Reopening marks it **In Progress**. Removing the sync trigger label does **not** delete the Multica issue. |
+| **Auto-status on issue close/reopen** | Closing a synced GitLab issue marks the Multica issue **Done**. Reopening marks it **In Progress**. Removing the sync trigger label marks the Multica issue **Cancelled** (unless it is already **Done**); re-adding the label moves **Cancelled** back to **Todo**. The Multica issue and GitLab link are never deleted by label removal. Close always wins over cancel. |
 
 ## Merge request identifier matching
 
@@ -66,9 +66,9 @@ Rules:
 
 | GitLab event | Multica action |
 |---|---|
-| Sync trigger label added | Create Multica issue with title and description; assign agent if a label uniquely matches an agent name |
-| Sync trigger label removed | No delete — Multica issue and GitLab link stay |
-| Issue closed | Mark Multica issue **Done** |
+| Sync trigger label added | Create Multica issue with title and description; assign agent if a label uniquely matches an agent name. If the Multica issue already exists and is **Cancelled**, move it to **Todo**. |
+| Sync trigger label removed | Multica issue and GitLab link stay; Multica status becomes **Cancelled**. Already **Done** issues stay **Done**. |
+| Issue closed | Mark Multica issue **Done** (even if the sync label is gone — close preferred over cancel) |
 | Issue reopened | Mark Multica issue **In Progress** |
 | Description updated | Update Multica issue description |
 | Assignee changed | Update displayed GitLab assignee on the Multica issue |

@@ -917,8 +917,9 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 
 	// Creating and field-syncing Multica issues requires the configured sync
 	// trigger: the bare label (default "agent") or "{label}::{agentName}".
-	// Removing the trigger does not delete the Multica issue — the link stays
-	// and close/reopen status transitions still apply when a row exists.
+	// Removing the trigger does not delete the Multica issue — the link stays.
+	// Status: label remove → cancelled (unless already done/cancelled); re-add
+	// from cancelled → todo. Close always prefers done over cancelled.
 	if hasSyncLabel {
 		if !rowExists && (action == "open" || action == "update") {
 			// Create Multica issue.
@@ -1042,6 +1043,8 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 	}
 
 	// Status transitions — applied after the create/sync block.
+	// Close/reopen take precedence over label-driven cancel/todo so a close
+	// without the sync label still lands on done (never cancelled).
 	if rowExists {
 		issue, err := h.Queries.GetIssue(ctx, row.IssueID)
 		if err != nil {
@@ -1052,24 +1055,44 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 		case "close":
 			h.advanceIssueToDone(ctx, issue, workspaceID, "gitlab_issue_closed")
 		case "reopen":
-			updated, err := h.Queries.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{
-				ID:          issue.ID,
-				Status:      "in_progress",
-				WorkspaceID: issue.WorkspaceID,
-			})
-			if err != nil {
-				slog.Warn("gitlab: failed to reopen issue", "err", err)
-				return
+			h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "in_progress", "gitlab_issue_reopened")
+		default:
+			if !hasSyncLabel {
+				// Leave done alone; skip if already cancelled (idempotent).
+				if issue.Status != "done" && issue.Status != "cancelled" {
+					h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "cancelled", "gitlab_sync_label_removed")
+				}
+			} else if issue.Status == "cancelled" {
+				// Re-adding the sync trigger resumes cancelled work as todo.
+				h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "todo", "gitlab_sync_label_restored")
 			}
-			prefix := h.getIssuePrefix(ctx, issue.WorkspaceID)
-			h.publish(protocol.EventIssueUpdated, workspaceID, "system", "", map[string]any{
-				"issue":          issueToResponse(updated, prefix),
-				"status_changed": true,
-				"prev_status":    issue.Status,
-				"source":         "gitlab_issue_reopened",
-			})
 		}
 	}
+}
+
+// setGitLabLinkedIssueStatus updates a Multica issue linked from GitLab and
+// publishes issue:updated. Used for reopen and sync-label remove/restore.
+func (h *Handler) setGitLabLinkedIssueStatus(ctx context.Context, issue db.Issue, workspaceID, status, source string) {
+	if issue.Status == status {
+		return
+	}
+	updated, err := h.Queries.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{
+		ID:          issue.ID,
+		Status:      status,
+		WorkspaceID: issue.WorkspaceID,
+	})
+	if err != nil {
+		slog.Warn("gitlab: failed to update issue status",
+			"err", err, "issue_id", uuidToString(issue.ID), "status", status, "source", source)
+		return
+	}
+	prefix := h.getIssuePrefix(ctx, issue.WorkspaceID)
+	h.publish(protocol.EventIssueUpdated, workspaceID, "system", "", map[string]any{
+		"issue":          issueToResponse(updated, prefix),
+		"status_changed": true,
+		"prev_status":    issue.Status,
+		"source":         source,
+	})
 }
 
 // gitlabCreatorID returns the user UUID to use as creator for webhook-triggered

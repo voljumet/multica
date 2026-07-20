@@ -75,7 +75,12 @@
     "cancel": "キャンセル",
     "add_confirm": "追加（{{num}}）",
     "adding": "追加中...",
-    "added_multi_toast_other": "{{count}} 件のエージェントに追加しました"
+    "added_multi_toast_other": "{{count}} 件のエージェントに追加しました",
+    "refresh_from_url": "URL から更新",
+    "refresh_from_url_tooltip": "ソース URL からスキルを再取得し、ローカルの内容を置き換えます",
+    "refreshing": "更新中…",
+    "refreshed_toast": "URL からスキルを更新しました",
+    "refresh_failed_toast": "URL からのスキル更新に失敗しました"
   },
   "toolbar": {
     "result_count_title": "該当スキル / 全スキル",
@@ -144,7 +149,9 @@
       "imported_clawhub": "ClawHub からインポート",
       "imported_skills_sh": "Skills.sh からインポート",
       "imported_github": "GitHub からインポート",
-      "provider": "プロバイダー · {{provider}}"
+      "provider": "プロバイダー · {{provider}}",
+      "refresh_from_url": "URL から更新",
+      "refreshing": "更新中…"
     },
     "not_found": {
       "title": "スキルが見つかりません",
