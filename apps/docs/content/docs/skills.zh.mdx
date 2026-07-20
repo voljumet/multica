@@ -58,6 +58,10 @@ scripts/check.sh
 
 `SKILL.md` 是保留路径，不能再创建同名支持文件。支持文件会和主文件一起提供给智能体。
 
+## 从 URL 更新已导入的 Skill
+
+从 GitHub、ClawHub 或 Skills.sh 导入的 Skill 会保存来源 URL（`config.origin.source_url`），内容变更时会更新 `updated_at`。在 Skills 列表和详情页，创建者或工作区管理员可以看到 **从 URL 更新**——一点即可重新拉取远程内容，**保留 Skill ID 与智能体绑定**，并覆盖正文与附属文件。手动创建或从本地运行时导入的 Skill 没有远程来源，因此不会显示该操作。
+
 ## 添加到智能体
 
 创建或导入 skill 后，还需要把它添加到具体的智能体。你可以在 skill 页面选择智能体，也可以打开智能体的 **Skills** 标签页进行管理。

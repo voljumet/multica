@@ -26,6 +26,23 @@ export function readOrigin(skill: SkillSummary): OriginInfo {
 }
 
 /**
+ * True when the skill was imported from a hosted URL we can re-fetch
+ * (GitHub / ClawHub / Skills.sh). Manual and runtime-local skills have no
+ * remote source, so they cannot use "Update from URL".
+ */
+export function canRefreshFromURL(skill: SkillSummary): boolean {
+  const origin = readOrigin(skill);
+  if (
+    origin.type !== "github" &&
+    origin.type !== "clawhub" &&
+    origin.type !== "skills_sh"
+  ) {
+    return false;
+  }
+  return Boolean(origin.source_url?.trim());
+}
+
+/**
  * SKILL.md is always present plus any additional attached files. Accepts a
  * `SkillSummary` because list endpoints don't return the `files` array — in
  * that case we only know the body exists, so the count falls back to 1.

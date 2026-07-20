@@ -7,6 +7,7 @@ import {
   Loader2,
   MoreHorizontal,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   X,
@@ -16,7 +17,10 @@ import { toast } from "sonner";
 import type { Agent, SkillSummary } from "@multica/core/types";
 import { isGitLabPersonaAgent } from "@multica/core/agents";
 import { api } from "@multica/core/api";
-import { workspaceKeys } from "@multica/core/workspace/queries";
+import {
+  skillDetailOptions,
+  workspaceKeys,
+} from "@multica/core/workspace/queries";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
@@ -49,6 +53,7 @@ import {
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
+import { canRefreshFromURL } from "../lib/origin";
 import type { SkillRow } from "./skills-page";
 
 // Shared context the row kebab and the batch toolbar both need. Assembled
@@ -506,6 +511,22 @@ export function DeleteSkillsDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Refresh from source URL (list + detail share the mutation)
+// ---------------------------------------------------------------------------
+
+export async function refreshSkillFromURL(
+  skill: SkillSummary,
+  wsId: string,
+  qc: ReturnType<typeof useQueryClient>,
+) {
+  const updated = await api.refreshSkillFromURL(skill.id);
+  qc.setQueryData(skillDetailOptions(wsId, skill.id).queryKey, updated);
+  qc.invalidateQueries({ queryKey: workspaceKeys.skills(wsId) });
+  qc.invalidateQueries({ queryKey: workspaceKeys.agents(wsId) });
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
 // Row kebab
 // ---------------------------------------------------------------------------
 
@@ -521,14 +542,57 @@ export function SkillRowActions({
   ctx: SkillActionsContext;
 }) {
   const { t } = useT("skills");
+  const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const showRefresh = row.canEdit && canRefreshFromURL(row.skill);
+
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refreshSkillFromURL(row.skill, ctx.wsId, qc);
+      toast.success(t(($) => $.actions.refreshed_toast));
+    } catch (e) {
+      toast.error(
+        e instanceof Error && e.message
+          ? e.message
+          : t(($) => $.actions.refresh_failed_toast),
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <span
       onClick={(e) => e.stopPropagation()}
-      className="flex items-center"
+      className="flex items-center gap-0.5"
     >
+      {showRefresh && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={t(($) => $.actions.refresh_from_url)}
+                disabled={refreshing}
+                onClick={handleRefresh}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/row:opacity-100 disabled:opacity-100"
+              >
+                <RefreshCw
+                  className={cn("size-3.5", refreshing && "animate-spin")}
+                />
+              </button>
+            }
+          />
+          <TooltipContent>
+            {t(($) => $.actions.refresh_from_url_tooltip)}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -546,6 +610,16 @@ export function SkillRowActions({
             <Plus className="size-3.5" />
             {t(($) => $.actions.add_to_agent)}
           </DropdownMenuItem>
+          {showRefresh && (
+            <DropdownMenuItem onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw
+                className={cn("size-3.5", refreshing && "animate-spin")}
+              />
+              {refreshing
+                ? t(($) => $.actions.refreshing)
+                : t(($) => $.actions.refresh_from_url)}
+            </DropdownMenuItem>
+          )}
           {row.canEdit && (
             <>
               <DropdownMenuSeparator />

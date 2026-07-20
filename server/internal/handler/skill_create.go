@@ -106,7 +106,7 @@ var (
 type skillOverwriteInput struct {
 	WorkspaceID   pgtype.UUID
 	TargetSkillID pgtype.UUID
-	UserID        string // re-checked against the skill creator inside the tx
+	UserID        string // re-checked against the skill creator inside the tx unless AllowManager
 	// ExpectedName, when non-empty, must equal the target's current name. Guards
 	// against a client sending the wrong target_skill_id and overwriting a
 	// different skill than the one the conflict dialog showed the user. The
@@ -116,14 +116,20 @@ type skillOverwriteInput struct {
 	Content      string
 	Config       any
 	Files        []CreateSkillFileRequest
+	// AllowManager skips the creator-only check. Handlers that set this MUST
+	// already have verified canManageSkill (creator or workspace owner/admin).
+	// Used by URL refresh so admins can roll out skill updates across customer
+	// workspaces without being the original importer.
+	AllowManager bool
 }
 
 // overwriteSkillWithFiles re-imports a bundle onto an existing skill in a single
 // transaction. It re-verifies, inside that tx, that the target still exists in
-// the workspace and that UserID may overwrite it (creator-only — see
-// canOverwriteSkillByLocalImport). A target deleted or a creator change between
-// the user's confirm and this write fails cleanly via errSkillOverwriteNotFound
-// / errSkillOverwriteForbidden rather than falling back to create.
+// the workspace and that UserID may overwrite it (creator-only by default — see
+// canOverwriteSkillByLocalImport; AllowManager opts into manager-grade access).
+// A target deleted or a creator change between the user's confirm and this write
+// fails cleanly via errSkillOverwriteNotFound / errSkillOverwriteForbidden rather
+// than falling back to create.
 //
 // Preserved: id, created_by, created_at, name, and agent_skill bindings (the
 // row identity and the binding table are never touched). Replaced: description,
@@ -157,7 +163,7 @@ func (h *Handler) overwriteSkillWithFiles(ctx context.Context, input skillOverwr
 		}
 		return SkillWithFilesResponse{}, err
 	}
-	if !canOverwriteSkillByLocalImport(input.UserID, existing) {
+	if !input.AllowManager && !canOverwriteSkillByLocalImport(input.UserID, existing) {
 		return SkillWithFilesResponse{}, errSkillOverwriteForbidden
 	}
 	// The overwrite is keyed on target_skill_id, but the conflict the user

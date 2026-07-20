@@ -12,7 +12,9 @@ import {
   Lock,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
+  Sparkles,
   Trash2,
   UserPlus,
   Users,
@@ -69,11 +71,12 @@ import { BreadcrumbHeader } from "../../layout/breadcrumb-header";
 import { useCanEditSkill } from "../hooks/use-can-edit-skill";
 import { useSkillPermissions } from "@multica/core/permissions";
 import { CapabilityBanner } from "@multica/ui/components/common/capability-banner";
-import { readOrigin, totalFileCount, type OriginInfo } from "../lib/origin";
+import { canRefreshFromURL, readOrigin, totalFileCount, type OriginInfo } from "../lib/origin";
 import { FileTree } from "./file-tree";
 import { FileViewer, isMarkdownPath, type FileMode } from "./file-viewer";
 import {
   AddToAgentDialog,
+  refreshSkillFromURL,
   type SkillActionsContext,
 } from "./skill-list-actions";
 import { useT } from "../../i18n";
@@ -411,6 +414,88 @@ function UsedByList({ agents }: { agents: Agent[] }) {
   );
 }
 
+function OriginSidebarCard({
+  origin,
+  runtime,
+  canRefresh,
+  refreshing,
+  onRefresh,
+}: {
+  origin: OriginInfo;
+  runtime: AgentRuntime | null;
+  canRefresh: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const { t } = useT("skills");
+  if (origin.type === "manual") return null;
+
+  const isRuntime = origin.type === "runtime_local";
+  const label =
+    origin.type === "runtime_local"
+      ? t(($) => $.detail.origin_card.imported_runtime)
+      : origin.type === "clawhub"
+        ? t(($) => $.detail.origin_card.imported_clawhub)
+        : origin.type === "github"
+          ? t(($) => $.detail.origin_card.imported_github)
+          : t(($) => $.detail.origin_card.imported_skills_sh);
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        {isRuntime ? (
+          <HardDrive className="h-3 w-3" />
+        ) : (
+          <Sparkles className="h-3 w-3" />
+        )}
+        {label}
+      </div>
+      {runtime && (
+        <div className="mt-1 break-all text-xs text-foreground">
+          {runtime.name}
+        </div>
+      )}
+      {origin.source_path && (
+        <div className="mt-1 break-all font-mono text-xs text-foreground">
+          {origin.source_path}
+        </div>
+      )}
+      {origin.source_url && (
+        <div className="mt-1 break-all font-mono text-xs text-foreground">
+          {origin.source_url}
+        </div>
+      )}
+      {origin.provider && (
+        <div className="mt-1 font-mono text-xs text-muted-foreground">
+          {t(($) => $.detail.origin_card.provider, { provider: origin.provider })}
+        </div>
+      )}
+      {canRefresh && (
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          className="mt-2 w-full"
+          disabled={refreshing}
+          onClick={onRefresh}
+        >
+          {refreshing ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t(($) => $.detail.origin_card.refreshing)}
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-3 w-3" />
+              {t(($) => $.detail.origin_card.refresh_from_url)}
+            </>
+          )}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function OverviewTab({
   skill,
   name,
@@ -418,9 +503,13 @@ function OverviewTab({
   canEdit,
   creatorName,
   skillAgents,
+  origin,
+  originRuntime,
+  refreshing,
   onNameChange,
   onDescriptionChange,
   onAddToAgents,
+  onRefresh,
 }: {
   skill: Skill;
   name: string;
@@ -428,9 +517,13 @@ function OverviewTab({
   canEdit: boolean;
   creatorName: string | null;
   skillAgents: Agent[];
+  origin: OriginInfo | null;
+  originRuntime: AgentRuntime | null;
+  refreshing: boolean;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onAddToAgents: () => void;
+  onRefresh: () => void;
 }) {
   const { t } = useT("skills");
 
@@ -485,6 +578,18 @@ function OverviewTab({
           </PropertyRow>
         </div>
       </section>
+
+      {origin && origin.type !== "manual" && (
+        <section className="mt-10">
+          <OriginSidebarCard
+            origin={origin}
+            runtime={originRuntime}
+            canRefresh={canEdit && canRefreshFromURL(skill)}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        </section>
+      )}
 
       <section className="mt-10">
         <div className="flex items-center justify-between gap-3">
@@ -765,6 +870,7 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
   const [selectedPath, setSelectedPath] = useState(SKILL_MD);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showAddToAgents, setShowAddToAgents] = useState(false);
   const [addingFile, setAddingFile] = useState(false);
@@ -994,6 +1100,22 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
       );
       setDeleting(false);
       setConfirmDelete(false);
+    }
+  };
+
+  const handleRefreshFromURL = async () => {
+    if (!skill || !canEdit || refreshing) return;
+    setRefreshing(true);
+    try {
+      const updated = await refreshSkillFromURL(skill, wsId, qc);
+      seedFromSkill(updated);
+      seededKeyRef.current = `${wsId}:${updated.id}@${updated.updated_at}`;
+      setConflictPending(false);
+      toast.success(t(($) => $.actions.refreshed_toast));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(($) => $.actions.refresh_failed_toast));
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -1255,9 +1377,13 @@ export function SkillDetailPage({ skillId }: { skillId: string }) {
             canEdit={canEdit}
             creatorName={creator?.name ?? null}
             skillAgents={skillAgents}
+            origin={origin}
+            originRuntime={originRuntime}
+            refreshing={refreshing}
             onNameChange={setName}
             onDescriptionChange={setDescription}
             onAddToAgents={() => setShowAddToAgents(true)}
+            onRefresh={handleRefreshFromURL}
           />
         ) : (
           <FilesTab

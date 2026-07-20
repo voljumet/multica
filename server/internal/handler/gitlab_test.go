@@ -729,9 +729,10 @@ func TestHandleGitLabIssueEvent_CustomSyncLabel(t *testing.T) {
 	}
 }
 
-// TestHandleGitLabIssueEvent_LabelRemoveKeepsIssue tests that removing the
-// "agent" label does not delete the linked Multica issue or gitlab_issue row.
-func TestHandleGitLabIssueEvent_LabelRemoveKeepsIssue(t *testing.T) {
+// TestHandleGitLabIssueEvent_LabelRemoveCancelsIssue tests that removing the
+// sync trigger label keeps the Multica issue and gitlab_issue link, but marks
+// the Multica issue cancelled.
+func TestHandleGitLabIssueEvent_LabelRemoveCancelsIssue(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("no database available")
 	}
@@ -790,14 +791,225 @@ func TestHandleGitLabIssueEvent_LabelRemoveKeepsIssue(t *testing.T) {
 	removeReq.Header.Set("X-Gitlab-Event", "Issue Hook")
 	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), removeReq)
 
-	// Multica issue and gitlab_issue link must remain.
-	if _, err := testHandler.Queries.GetIssue(ctx, issueID); err != nil {
+	// Multica issue and gitlab_issue link must remain; status becomes cancelled.
+	issue, err := testHandler.Queries.GetIssue(ctx, issueID)
+	if err != nil {
 		t.Fatalf("multica issue should remain after agent label removal: %v", err)
+	}
+	if issue.Status != "cancelled" {
+		t.Errorf("status: got %q, want cancelled", issue.Status)
 	}
 	if _, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
 		WorkspaceID: wsUUID, ProjectPath: "testorg-issue-remove/repo", GlIssueIid: 11,
 	}); err != nil {
 		t.Fatalf("gitlab_issue row should remain after agent label removal: %v", err)
+	}
+}
+
+// TestHandleGitLabIssueEvent_LabelRestoreUncancelsToTodo tests that re-adding
+// the sync trigger label moves a cancelled Multica issue back to todo.
+func TestHandleGitLabIssueEvent_LabelRestoreUncancelsToTodo(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-restore",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
+	for _, p := range []string{
+		`{"object_kind":"issue","object_attributes":{"iid":61,"title":"Restore me","description":"","action":"open"},"project":{"id":610,"path_with_namespace":"testorg-issue-restore/repo","namespace":"testorg-issue-restore"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":61,"title":"Restore me","description":"","action":"update"},"project":{"id":610,"path_with_namespace":"testorg-issue-restore/repo","namespace":"testorg-issue-restore"},"labels":[],"assignees":[]}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(p))
+		req.Header.Set("X-Gitlab-Token", "s")
+		req.Header.Set("X-Gitlab-Event", "Issue Hook")
+		testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+	}
+
+	row, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-issue-restore/repo", GlIssueIid: 61,
+	})
+	if err != nil {
+		t.Fatalf("gitlab_issue not found: %v", err)
+	}
+	before, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if before.Status != "cancelled" {
+		t.Fatalf("precondition: status = %q, want cancelled", before.Status)
+	}
+
+	// Re-add sync label (prefixed form alone is enough).
+	restorePayload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 61, "title": "Restore me", "description": "", "action": "update"},
+		"project": {"id": 610, "path_with_namespace": "testorg-issue-restore/repo", "namespace": "testorg-issue-restore"},
+		"labels": [{"title": "agent::Implementer"}],
+		"assignees": []
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(restorePayload))
+	req.Header.Set("X-Gitlab-Token", "s")
+	req.Header.Set("X-Gitlab-Event", "Issue Hook")
+	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if issue.Status != "todo" {
+		t.Errorf("status: got %q, want todo", issue.Status)
+	}
+}
+
+// TestHandleGitLabIssueEvent_LabelRemoveLeavesDoneAlone tests that removing
+// the sync label does not rewrite a Multica issue that is already done.
+func TestHandleGitLabIssueEvent_LabelRemoveLeavesDoneAlone(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-leave-done",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
+	for _, p := range []string{
+		`{"object_kind":"issue","object_attributes":{"iid":62,"title":"Leave done","description":"","action":"open"},"project":{"id":620,"path_with_namespace":"testorg-issue-leave-done/repo","namespace":"testorg-issue-leave-done"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":62,"title":"Leave done","description":"","action":"close"},"project":{"id":620,"path_with_namespace":"testorg-issue-leave-done/repo","namespace":"testorg-issue-leave-done"},"labels":[{"title":"agent"}],"assignees":[]}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(p))
+		req.Header.Set("X-Gitlab-Token", "s")
+		req.Header.Set("X-Gitlab-Event", "Issue Hook")
+		testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+	}
+
+	row, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-issue-leave-done/repo", GlIssueIid: 62,
+	})
+	if err != nil {
+		t.Fatalf("gitlab_issue not found: %v", err)
+	}
+
+	// Remove label while Multica is done.
+	removePayload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 62, "title": "Leave done", "description": "", "action": "update"},
+		"project": {"id": 620, "path_with_namespace": "testorg-issue-leave-done/repo", "namespace": "testorg-issue-leave-done"},
+		"labels": [],
+		"assignees": []
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(removePayload))
+	req.Header.Set("X-Gitlab-Token", "s")
+	req.Header.Set("X-Gitlab-Event", "Issue Hook")
+	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if issue.Status != "done" {
+		t.Errorf("status: got %q, want done", issue.Status)
+	}
+}
+
+// TestHandleGitLabIssueEvent_ClosePrefersDoneOverCancelled tests that close
+// marks done even when the sync trigger label is already gone.
+func TestHandleGitLabIssueEvent_ClosePrefersDoneOverCancelled(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-close-no-label",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
+	// Create with label, then close without the label in the same close event.
+	addPayload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 63, "title": "Close without label", "description": "", "action": "open"},
+		"project": {"id": 630, "path_with_namespace": "testorg-issue-close-no-label/repo", "namespace": "testorg-issue-close-no-label"},
+		"labels": [{"title": "agent"}],
+		"assignees": []
+	}`
+	addReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(addPayload))
+	addReq.Header.Set("X-Gitlab-Token", "s")
+	addReq.Header.Set("X-Gitlab-Event", "Issue Hook")
+	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), addReq)
+
+	row, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-issue-close-no-label/repo", GlIssueIid: 63,
+	})
+	if err != nil {
+		t.Fatalf("gitlab_issue not found: %v", err)
+	}
+
+	closePayload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 63, "title": "Close without label", "description": "", "action": "close"},
+		"project": {"id": 630, "path_with_namespace": "testorg-issue-close-no-label/repo", "namespace": "testorg-issue-close-no-label"},
+		"labels": [],
+		"assignees": []
+	}`
+	closeReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(closePayload))
+	closeReq.Header.Set("X-Gitlab-Token", "s")
+	closeReq.Header.Set("X-Gitlab-Event", "Issue Hook")
+	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), closeReq)
+
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if issue.Status != "done" {
+		t.Errorf("status: got %q, want done (close preferred over cancelled)", issue.Status)
 	}
 }
 

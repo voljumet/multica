@@ -69,6 +69,10 @@ After creating or importing a skill, it still needs to be added to specific agen
 
 Only members who can modify the agent can add, remove, or disable its skills.
 
+## Updating a URL-imported skill
+
+When a skill is imported from GitHub, ClawHub, or Skills.sh, Multica stores the source URL on the skill (`config.origin.source_url`) and bumps `updated_at` whenever content changes. On the skills list and the skill detail page, creators and workspace admins see **Update from URL** — one click re-fetches the remote skill and replaces local content and supporting files while **keeping the skill ID and agent attachments**. Manual and runtime-local skills have no remote source, so they do not show this action.
+
 ## Workspace skills and repository skills
 
 Workspace skills are stored in Multica — a fit for skills the team maintains together and adds to different agents.
