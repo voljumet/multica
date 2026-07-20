@@ -340,7 +340,6 @@ export function MembersTab() {
                 <Plus className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-medium">{t(($) => $.members.add_title)}</h3>
               </div>
-
               {addableUsers.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">
@@ -389,7 +388,14 @@ export function MembersTab() {
                       if (e.key === "Enter" && inviteEmail.trim()) void handleInviteByEmail();
                     }}
                   />
-                  <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as MemberRole)}>
+                  <Select
+                    items={(["member", "admin"] as const).map((value) => ({
+                      value,
+                      label: roleConfig[value].label,
+                    }))}
+                    value={inviteRole}
+                    onValueChange={(value) => setInviteRole(value as MemberRole)}
+                  >
                     <SelectTrigger size="sm">
                       <SelectValue>{() => roleConfig[inviteRole].label}</SelectValue>
                     </SelectTrigger>

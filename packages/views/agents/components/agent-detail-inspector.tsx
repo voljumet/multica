@@ -20,6 +20,7 @@ import {
 import { useAutoSave } from "../../settings/components/use-auto-save";
 import { useT } from "../../i18n";
 import { CharCounter } from "./char-counter";
+import { ResourceLabelPicker } from "../../labels/resource-label-picker";
 import { ModelPicker } from "./inspector/model-picker";
 import { RuntimePicker } from "./inspector/runtime-picker";
 import { ThinkingSettingField } from "./inspector/thinking-prop-row";
@@ -124,7 +125,7 @@ export function AgentDetailInspector({
           <SettingsRow
             label={t(($) => $.inspector.avatar_label)}
             description={t(($) => $.inspector.avatar_hint)}
-            controlClassName="sm:max-w-none"
+            size="none"
           >
             <div className="flex justify-start sm:justify-end">
               <AvatarUploadControl
@@ -140,7 +141,7 @@ export function AgentDetailInspector({
 
           <SettingsRow
             label={t(($) => $.inspector.name_label)}
-            controlClassName="sm:w-80"
+            size="text"
           >
             <div>
               <Input
@@ -164,7 +165,7 @@ export function AgentDetailInspector({
 
           <SettingsRow
             label={t(($) => $.inspector.description_label)}
-            controlClassName="sm:w-96"
+            size="text"
             align="start"
           >
             <div>
@@ -187,6 +188,18 @@ export function AgentDetailInspector({
               />
             </div>
           </SettingsRow>
+          <SettingsRow
+            label={t(($) => $.inspector.labels_label)}
+            description={t(($) => $.inspector.labels_hint)}
+            size="text"
+            align="start"
+          >
+            <ResourceLabelPicker
+              resourceType="agent"
+              resourceId={agent.id}
+              canEdit={canEdit}
+            />
+          </SettingsRow>
         </SettingsCard>
       </SettingsSection>
 
@@ -197,7 +210,7 @@ export function AgentDetailInspector({
         <SettingsCard>
           <SettingsRow
             label={t(($) => $.inspector.prop_runtime)}
-            controlClassName="sm:w-80"
+            size="select-wide"
           >
             <RuntimePicker
               variant="field"
@@ -207,12 +220,18 @@ export function AgentDetailInspector({
               members={members}
               currentUserId={currentUserId}
               canEdit={canEdit}
-              onChange={(id) => update({ runtime_id: id })}
+              // Model and thinking level are per-runtime/per-model; clear both
+              // so the new runtime resolves its own defaults instead of keeping
+              // values it may not support (a stale thinking level would linger
+              // as an orphan token otherwise).
+              onChange={(id) =>
+                update({ runtime_id: id, model: "", thinking_level: "" })
+              }
             />
           </SettingsRow>
           <SettingsRow
             label={t(($) => $.inspector.prop_model)}
-            controlClassName="sm:w-80"
+            size="select-wide"
           >
             <ModelPicker
               variant="field"
@@ -238,7 +257,7 @@ export function AgentDetailInspector({
           />
           <SettingsRow
             label={t(($) => $.inspector.prop_concurrency)}
-            controlClassName="sm:w-80"
+            size="select-wide"
           >
             <ConcurrencyField
               value={agent.max_concurrent_tasks}

@@ -82,6 +82,7 @@ services:
       APP_ENV: ${APP_ENV:-production}
       MULTICA_DEV_VERIFICATION_CODE: ${MULTICA_DEV_VERIFICATION_CODE:-}
       MULTICA_APP_URL: ${MULTICA_APP_URL:-http://localhost:3000}
+      MULTICA_SHUTDOWN_HOLD_DURATION: ${MULTICA_SHUTDOWN_HOLD_DURATION:-}
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-true}
       ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
       ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
@@ -119,7 +120,7 @@ services:
       # in the database, so this single deployment-wide key is all the operator
       # needs to set here.
       MULTICA_SLACK_SECRET_KEY: ${MULTICA_SLACK_SECRET_KEY:-}
-      # Gitlab integration.
+      # GitLab integration (workspace OAuth + webhooks).
       GITLAB_URL: ${GITLAB_URL:-}
       GITLAB_APP_ID: ${GITLAB_APP_ID:-}
       GITLAB_APP_SECRET: ${GITLAB_APP_SECRET:-}
@@ -151,3 +152,4 @@ volumes:
 networks:
   shared-network:
     external: true
+

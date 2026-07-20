@@ -18,7 +18,8 @@
     "docs": "ドキュメント",
     "changelog": "変更ログ",
     "discord": "Discord",
-    "feedback": "フィードバック"
+    "feedback": "フィードバック",
+    "server_version": "サーバーバージョン {{version}}"
   },
   "workspace_loader": {
     "loading_workspace": "ワークスペースを読み込み中…",
@@ -34,7 +35,7 @@
     "invitation_decline": "辞退",
     "log_out": "ログアウト",
     "new_issue": "新規イシュー",
-    "new_issue_shortcut": "I",
+    "new_issue_shortcut": "C",
     "pinned_label": "ピン留め済み",
     "workspace_group": "ワークスペース",
     "configure_group": "設定",

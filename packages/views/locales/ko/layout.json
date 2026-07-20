@@ -18,7 +18,8 @@
     "docs": "문서",
     "changelog": "변경 로그",
     "discord": "Discord",
-    "feedback": "피드백"
+    "feedback": "피드백",
+    "server_version": "서버 버전 {{version}}"
   },
   "workspace_loader": {
     "loading_workspace": "워크스페이스 로딩 중...",
@@ -34,7 +35,7 @@
     "invitation_decline": "거절",
     "log_out": "로그아웃",
     "new_issue": "새 이슈",
-    "new_issue_shortcut": "I",
+    "new_issue_shortcut": "C",
     "pinned_label": "고정됨",
     "workspace_group": "워크스페이스",
     "configure_group": "설정",

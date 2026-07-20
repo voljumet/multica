@@ -8,7 +8,9 @@ export type ShortcutInput = {
   key: string;
   control: boolean;
   meta: boolean;
+  alt: boolean;
   shift: boolean;
+  isAutoRepeat?: boolean;
 };
 
 // Subset of WebContents the zoom handler needs. Keeps the test mock tiny.
@@ -44,7 +46,12 @@ const ZOOM_MAX = 4.5;
  * - `"reload"`: Cmd/Ctrl+R — caller should call webContents.reload()
  * - `"force-reload"`: Cmd/Ctrl+Shift+R — caller should call webContents.reloadIgnoringCache()
  */
-export type ShortcutResult = boolean | "close-tab" | "open-settings" | "reload" | "force-reload";
+export type ShortcutResult =
+  | boolean
+  | "close-tab"
+  | "open-settings"
+  | "reload"
+  | "force-reload";
 
 export function handleAppShortcut(
   input: ShortcutInput,
@@ -52,14 +59,16 @@ export function handleAppShortcut(
   platform: NodeJS.Platform = process.platform,
 ): ShortcutResult {
   if (input.type !== "keyDown") return false;
-  const cmdOrCtrl = platform === "darwin" ? input.meta : input.control;
+  const primary = platform === "darwin" ? input.meta : input.control;
+  const secondary = platform === "darwin" ? input.control : input.meta;
+  const noSecondaryModifiers = !secondary && !input.alt;
 
-  // Cmd/Ctrl+, → open settings.
-  if (cmdOrCtrl && input.key === ",") {
+  // Cmd/Ctrl+, → open settings (allowed with only the primary modifier).
+  if (primary && input.key === "," && noSecondaryModifiers && !input.shift) {
     return "open-settings";
   }
 
-  if (!cmdOrCtrl) return false;
+  if (!primary || !noSecondaryModifiers) return false;
 
   // Cmd/Ctrl+Shift+R → force reload (check before plain R).
   if (input.shift && input.key.toLowerCase() === "r") {
@@ -72,21 +81,27 @@ export function handleAppShortcut(
   }
 
   // Cmd/Ctrl + "=" (unshifted) or "+" (Shift+=) → zoom in.
-  if (input.key === "=" || input.key === "+") {
+  if (
+    (input.key === "=" && !input.shift) ||
+    (input.key === "+" && input.shift)
+  ) {
     const next = Math.min(webContents.getZoomLevel() + ZOOM_STEP, ZOOM_MAX);
     webContents.setZoomLevel(next);
     return true;
   }
 
   // Cmd/Ctrl + "-" (unshifted) or "_" (Shift+-) → zoom out.
-  if (input.key === "-" || input.key === "_") {
+  if (
+    (input.key === "-" && !input.shift) ||
+    (input.key === "_" && input.shift)
+  ) {
     const next = Math.max(webContents.getZoomLevel() - ZOOM_STEP, ZOOM_MIN);
     webContents.setZoomLevel(next);
     return true;
   }
 
   // Cmd/Ctrl + 0 → reset zoom to 100%.
-  if (input.key === "0") {
+  if (input.key === "0" && !input.shift) {
     webContents.setZoomLevel(0);
     return true;
   }
@@ -95,6 +110,9 @@ export function handleAppShortcut(
   // Cmd/Ctrl + Shift + W is reserved for "close window" — do not intercept.
   // Return a signal so the caller can send IPC to the renderer.
   if (input.key.toLowerCase() === "w" && !input.shift) {
+    // Holding Cmd/Ctrl+W must not race through several product tabs. Swallow
+    // Electron's repeated keydown without issuing another close request.
+    if (input.isAutoRepeat) return true;
     return "close-tab";
   }
 

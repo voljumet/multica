@@ -393,13 +393,35 @@ SELECT c.* FROM comment c
 WHERE c.id = (SELECT id FROM root_of WHERE parent_id IS NULL LIMIT 1);
 
 -- name: CreateComment :one
+-- A new comment counts as activity on its issue, so the same statement bumps
+-- the parent issue's updated_at. The touch is a leading data-modifying CTE and
+-- the INSERT selects the issue/workspace back out of it, which makes the two
+-- inseparable and gives two query-level guarantees:
+--   * atomicity — the insert and the timestamp bump commit or roll back
+--     together, so an issue is never left with a stale updated_at after a
+--     comment persists; and
+--   * tenant integrity — the comment can only be created against an issue that
+--     actually exists in the given workspace. A mismatched (issue, workspace)
+--     pair matches 0 rows in the CTE, the dependent INSERT then selects nothing,
+--     and the :one query returns pgx.ErrNoRows. A wrong workspace can therefore
+--     never leave a mis-attributed comment or a silently un-touched issue.
+-- Centralizing this here means every comment entrypoint inherits both
+-- guarantees regardless of what a caller passes. The "Updated date" sort and
+-- the daemon GC TTL both read updated_at, so this consistency is load-bearing.
+WITH touched_issue AS (
+    UPDATE issue SET updated_at = now()
+    WHERE issue.id = sqlc.arg(issue_id) AND issue.workspace_id = sqlc.arg(workspace_id)
+    RETURNING issue.id, issue.workspace_id
+)
 INSERT INTO comment (issue_id, workspace_id, author_type, author_id, content, type, parent_id, source_task_id)
-VALUES ($1, $2, $3, $4, $5, $6, sqlc.narg(parent_id), sqlc.narg(source_task_id))
+SELECT ti.id, ti.workspace_id, sqlc.arg(author_type), sqlc.arg(author_id), sqlc.arg(content), sqlc.arg(type), sqlc.narg(parent_id), sqlc.narg(source_task_id)
+FROM touched_issue ti
 RETURNING *;
 
 -- name: UpdateComment :one
 UPDATE comment SET
     content = $2,
+    source_task_id = sqlc.narg(source_task_id),
     updated_at = now()
 WHERE id = $1
 RETURNING *;
@@ -496,3 +518,18 @@ SELECT * FROM comment WHERE gitlab_note_id = $1;
 
 -- name: SetCommentGitLabNoteID :exec
 UPDATE comment SET gitlab_note_id = $2 WHERE id = $1;
+
+-- name: FindUnlinkedCommentByIssueAndContent :one
+-- Dual-write echo prevention: when an agent (or tool) posts the same body to
+-- Multica and then GitLab, the Note Hook should attach the GitLab note id to
+-- the existing Multica comment instead of creating a duplicate. Exact body
+-- match within a short window; content is the Multica-stored form (no GitLab
+-- HTML, no Multica relay sentinel).
+SELECT * FROM comment
+WHERE issue_id = $1
+  AND content = $2
+  AND gitlab_note_id IS NULL
+  AND type = 'comment'
+  AND created_at > now() - interval '30 minutes'
+ORDER BY created_at DESC
+LIMIT 1;

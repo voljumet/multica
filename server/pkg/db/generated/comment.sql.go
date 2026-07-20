@@ -156,32 +156,54 @@ func (q *Queries) CountNewCommentsSince(ctx context.Context, arg CountNewComment
 }
 
 const createComment = `-- name: CreateComment :one
+WITH touched_issue AS (
+    UPDATE issue SET updated_at = now()
+    WHERE issue.id = $7 AND issue.workspace_id = $8
+    RETURNING issue.id, issue.workspace_id
+)
 INSERT INTO comment (issue_id, workspace_id, author_type, author_id, content, type, parent_id, source_task_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+SELECT ti.id, ti.workspace_id, $1, $2, $3, $4, $5, $6
+FROM touched_issue ti
 RETURNING id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id
 `
 
 type CreateCommentParams struct {
-	IssueID      pgtype.UUID `json:"issue_id"`
-	WorkspaceID  pgtype.UUID `json:"workspace_id"`
 	AuthorType   string      `json:"author_type"`
 	AuthorID     pgtype.UUID `json:"author_id"`
 	Content      string      `json:"content"`
 	Type         string      `json:"type"`
 	ParentID     pgtype.UUID `json:"parent_id"`
 	SourceTaskID pgtype.UUID `json:"source_task_id"`
+	IssueID      pgtype.UUID `json:"issue_id"`
+	WorkspaceID  pgtype.UUID `json:"workspace_id"`
 }
 
+// A new comment counts as activity on its issue, so the same statement bumps
+// the parent issue's updated_at. The touch is a leading data-modifying CTE and
+// the INSERT selects the issue/workspace back out of it, which makes the two
+// inseparable and gives two query-level guarantees:
+//   - atomicity — the insert and the timestamp bump commit or roll back
+//     together, so an issue is never left with a stale updated_at after a
+//     comment persists; and
+//   - tenant integrity — the comment can only be created against an issue that
+//     actually exists in the given workspace. A mismatched (issue, workspace)
+//     pair matches 0 rows in the CTE, the dependent INSERT then selects nothing,
+//     and the :one query returns pgx.ErrNoRows. A wrong workspace can therefore
+//     never leave a mis-attributed comment or a silently un-touched issue.
+//
+// Centralizing this here means every comment entrypoint inherits both
+// guarantees regardless of what a caller passes. The "Updated date" sort and
+// the daemon GC TTL both read updated_at, so this consistency is load-bearing.
 func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (Comment, error) {
 	row := q.db.QueryRow(ctx, createComment,
-		arg.IssueID,
-		arg.WorkspaceID,
 		arg.AuthorType,
 		arg.AuthorID,
 		arg.Content,
 		arg.Type,
 		arg.ParentID,
 		arg.SourceTaskID,
+		arg.IssueID,
+		arg.WorkspaceID,
 	)
 	var i Comment
 	err := row.Scan(
@@ -217,6 +239,50 @@ type DeleteCommentParams struct {
 func (q *Queries) DeleteComment(ctx context.Context, arg DeleteCommentParams) error {
 	_, err := q.db.Exec(ctx, deleteComment, arg.ID, arg.WorkspaceID)
 	return err
+}
+
+const findUnlinkedCommentByIssueAndContent = `-- name: FindUnlinkedCommentByIssueAndContent :one
+SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id FROM comment
+WHERE issue_id = $1
+  AND content = $2
+  AND gitlab_note_id IS NULL
+  AND type = 'comment'
+  AND created_at > now() - interval '30 minutes'
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type FindUnlinkedCommentByIssueAndContentParams struct {
+	IssueID pgtype.UUID `json:"issue_id"`
+	Content string      `json:"content"`
+}
+
+// Dual-write echo prevention: when an agent (or tool) posts the same body to
+// Multica and then GitLab, the Note Hook should attach the GitLab note id to
+// the existing Multica comment instead of creating a duplicate. Exact body
+// match within a short window; content is the Multica-stored form (no GitLab
+// HTML, no Multica relay sentinel).
+func (q *Queries) FindUnlinkedCommentByIssueAndContent(ctx context.Context, arg FindUnlinkedCommentByIssueAndContentParams) (Comment, error) {
+	row := q.db.QueryRow(ctx, findUnlinkedCommentByIssueAndContent, arg.IssueID, arg.Content)
+	var i Comment
+	err := row.Scan(
+		&i.ID,
+		&i.IssueID,
+		&i.AuthorType,
+		&i.AuthorID,
+		&i.Content,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ParentID,
+		&i.WorkspaceID,
+		&i.ResolvedAt,
+		&i.ResolvedByType,
+		&i.ResolvedByID,
+		&i.SourceTaskID,
+		&i.GitlabNoteID,
+	)
+	return i, err
 }
 
 const getComment = `-- name: GetComment :one
@@ -1334,18 +1400,20 @@ func (q *Queries) UnresolveComment(ctx context.Context, id pgtype.UUID) (Comment
 const updateComment = `-- name: UpdateComment :one
 UPDATE comment SET
     content = $2,
+    source_task_id = $3,
     updated_at = now()
 WHERE id = $1
 RETURNING id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id
 `
 
 type UpdateCommentParams struct {
-	ID      pgtype.UUID `json:"id"`
-	Content string      `json:"content"`
+	ID           pgtype.UUID `json:"id"`
+	Content      string      `json:"content"`
+	SourceTaskID pgtype.UUID `json:"source_task_id"`
 }
 
 func (q *Queries) UpdateComment(ctx context.Context, arg UpdateCommentParams) (Comment, error) {
-	row := q.db.QueryRow(ctx, updateComment, arg.ID, arg.Content)
+	row := q.db.QueryRow(ctx, updateComment, arg.ID, arg.Content, arg.SourceTaskID)
 	var i Comment
 	err := row.Scan(
 		&i.ID,

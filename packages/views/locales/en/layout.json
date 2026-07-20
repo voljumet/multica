@@ -18,7 +18,8 @@
     "docs": "Docs",
     "changelog": "Change log",
     "discord": "Discord",
-    "feedback": "Feedback"
+    "feedback": "Feedback",
+    "server_version": "Server version {{version}}"
   },
   "workspace_loader": {
     "loading_workspace": "Loading workspace…",
@@ -34,7 +35,7 @@
     "invitation_decline": "Decline",
     "log_out": "Log out",
     "new_issue": "New Issue",
-    "new_issue_shortcut": "I",
+    "new_issue_shortcut": "C",
     "pinned_label": "Pinned",
     "workspace_group": "Workspace",
     "configure_group": "Configure",
