@@ -43,6 +43,147 @@ func TestWorkspaceGitLabIssueSyncLabel(t *testing.T) {
 	}
 }
 
+func TestGitLabLabelAgentNameCandidates(t *testing.T) {
+	labels := []struct {
+		Title string `json:"title"`
+	}{
+		{Title: "agent"},
+		{Title: "agent::Coder"},
+		{Title: "  Research  "},
+	}
+	got := gitlabLabelAgentNameCandidates(labels, "agent")
+	want := []string{"agent", "agent::Coder", "Coder", "Research"}
+	if len(got) != len(want) {
+		t.Fatalf("candidates: got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("candidates[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestMatchAgentByGitLabLabels(t *testing.T) {
+	coderID := parseUUID("11111111-1111-1111-1111-111111111111")
+	researchID := parseUUID("22222222-2222-2222-2222-222222222222")
+	agents := []db.Agent{
+		{ID: coderID, Name: "Coder", Kind: "user"},
+		{ID: researchID, Name: "Research", Kind: "user"},
+		{ID: parseUUID("33333333-3333-3333-3333-333333333333"), Name: "Persona", Kind: "system"},
+	}
+	label := func(titles ...string) []struct {
+		Title string `json:"title"`
+	} {
+		out := make([]struct {
+			Title string `json:"title"`
+		}, len(titles))
+		for i, t := range titles {
+			out[i].Title = t
+		}
+		return out
+	}
+
+	if _, ok := matchAgentByGitLabLabels(agents, label("agent"), "agent"); ok {
+		t.Fatal("sync label alone should not assign when no agent is named agent")
+	}
+	got, ok := matchAgentByGitLabLabels(agents, label("agent", "agent::Coder"), "agent")
+	if !ok || uuidToString(got.ID) != uuidToString(coderID) {
+		t.Fatalf("prefixed name: ok=%v agent=%q", ok, got.Name)
+	}
+	got, ok = matchAgentByGitLabLabels(agents, label("agent", "Research"), "agent")
+	if !ok || uuidToString(got.ID) != uuidToString(researchID) {
+		t.Fatalf("exact name: ok=%v agent=%q", ok, got.Name)
+	}
+	if _, ok := matchAgentByGitLabLabels(agents, label("agent", "Coder", "Research"), "agent"); ok {
+		t.Fatal("two agent-name labels should be ambiguous")
+	}
+	if _, ok := matchAgentByGitLabLabels(agents, label("agent", "Persona"), "agent"); ok {
+		t.Fatal("system persona must not be assigned")
+	}
+	got, ok = matchAgentByGitLabLabels(agents, label("agent", "coder"), "agent")
+	if !ok || uuidToString(got.ID) != uuidToString(coderID) {
+		t.Fatalf("case-insensitive: ok=%v agent=%q", ok, got.Name)
+	}
+}
+
+func TestSplitGitRemote(t *testing.T) {
+	tests := []struct {
+		raw      string
+		wantHost string
+		wantPath string
+	}{
+		{"https://git.example.com/group/repo.git", "git.example.com", "group/repo"},
+		{"https://git.example.com/group/repo", "git.example.com", "group/repo"},
+		{"git@git.example.com:group/repo.git", "git.example.com", "group/repo"},
+		{"ssh://git@git.example.com/group/sub/repo.git", "git.example.com", "group/sub/repo"},
+		{"group/repo", "", "group/repo"},
+		{"https://git.example.com:8443/Group/Repo.GIT", "git.example.com", "group/repo"},
+		{"", "", ""},
+	}
+	for _, tc := range tests {
+		host, path := splitGitRemote(tc.raw)
+		if host != tc.wantHost || path != tc.wantPath {
+			t.Errorf("splitGitRemote(%q) = (%q, %q), want (%q, %q)",
+				tc.raw, host, path, tc.wantHost, tc.wantPath)
+		}
+	}
+}
+
+func TestGitRepoMatchesGitLabProject(t *testing.T) {
+	pathKey := "paral/app"
+	candidates := []string{
+		"https://git.paral.no/paral/app.git",
+		"git@git.paral.no:paral/app.git",
+	}
+
+	if !gitRepoMatchesGitLabProject("https://git.paral.no/paral/app", pathKey, candidates) {
+		t.Error("expected https resource URL to match candidate")
+	}
+	if !gitRepoMatchesGitLabProject("git@git.paral.no:paral/app.git", pathKey, candidates) {
+		t.Error("expected scp-style resource URL to match candidate")
+	}
+	// Path-only fallback when candidates empty.
+	if !gitRepoMatchesGitLabProject("https://git.paral.no/paral/app.git", pathKey, nil) {
+		t.Error("expected path-only match against path_with_namespace")
+	}
+	// Different host with same path and explicit candidates should not match.
+	if gitRepoMatchesGitLabProject("https://github.com/paral/app.git", pathKey, candidates) {
+		t.Error("expected different host to not match when candidates carry host")
+	}
+	// Wrong path.
+	if gitRepoMatchesGitLabProject("https://git.paral.no/paral/other.git", pathKey, candidates) {
+		t.Error("expected different path to not match")
+	}
+}
+
+func TestGitlabProjectCandidateURLs(t *testing.T) {
+	t.Setenv("GITLAB_URL", "https://git.paral.no")
+	p := gitlabWebhookProject{
+		PathWithNamespace: "paral/app",
+		WebURL:            "https://git.paral.no/paral/app",
+		GitHTTPURL:        "https://git.paral.no/paral/app.git",
+		GitSSHURL:         "git@git.paral.no:paral/app.git",
+	}
+	got := gitlabProjectCandidateURLs(p)
+	wantAny := []string{
+		"https://git.paral.no/paral/app.git",
+		"git@git.paral.no:paral/app.git",
+		"https://git.paral.no/paral/app",
+	}
+	for _, w := range wantAny {
+		found := false
+		for _, g := range got {
+			if g == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("candidate URLs missing %q; got %v", w, got)
+		}
+	}
+}
+
 func TestHandleGitLabWebhook_MissingSecret(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("no database available")
@@ -187,6 +328,247 @@ func TestHandleGitLabIssueEvent_LabelAdd(t *testing.T) {
 	if issue.Title != "Sync me" {
 		t.Errorf("title: got %q, want %q", issue.Title, "Sync me")
 	}
+	if issue.AssigneeType.Valid {
+		t.Errorf("expected unassigned without agent-name label, got type=%q", issue.AssigneeType.String)
+	}
+}
+
+// TestHandleGitLabIssueEvent_AssignsAgentByName assigns the Multica agent whose
+// name matches a GitLab label (exact or "{syncLabel}::{name}").
+func TestHandleGitLabIssueEvent_AssignsAgentByName(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+
+	// Seeded fixture agent is named "Handler Test Agent".
+	agents, err := testHandler.Queries.ListAgents(ctx, wsUUID)
+	if err != nil {
+		t.Fatalf("list agents: %v", err)
+	}
+	var seeded db.Agent
+	for _, a := range agents {
+		if a.Name == "Handler Test Agent" && a.Kind == "user" {
+			seeded = a
+			break
+		}
+	}
+	if !seeded.ID.Valid {
+		t.Fatal("setup: fixture agent Handler Test Agent not found")
+	}
+
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-agent-name",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: create connection: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	// Prefixed form: agent::Handler Test Agent
+	payload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 88, "title": "Assign me", "description": "", "action": "open"},
+		"project": {"id": 888, "path_with_namespace": "testorg-agent-name/repo", "namespace": "testorg-agent-name"},
+		"labels": [{"title": "agent"}, {"title": "agent::Handler Test Agent"}],
+		"assignees": []
+	}`
+	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(payload))
+	req.Header.Set("X-Gitlab-Token", "s")
+	req.Header.Set("X-Gitlab-Event", "Issue Hook")
+	w := httptest.NewRecorder()
+	testHandler.HandleGitLabWebhook(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+
+	row, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-agent-name/repo", GlIssueIid: 88,
+	})
+	if err != nil {
+		t.Fatalf("gitlab_issue not created: %v", err)
+	}
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("multica issue not created: %v", err)
+	}
+	if !issue.AssigneeType.Valid || issue.AssigneeType.String != "agent" {
+		t.Fatalf("assignee_type: got %v, want agent", issue.AssigneeType)
+	}
+	if !issue.AssigneeID.Valid || uuidToString(issue.AssigneeID) != uuidToString(seeded.ID) {
+		t.Fatalf("assignee_id: got %v, want %s", issue.AssigneeID, uuidToString(seeded.ID))
+	}
+
+	// Exact agent name as a second label form.
+	payload2 := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 89, "title": "Assign exact", "description": "", "action": "open"},
+		"project": {"id": 888, "path_with_namespace": "testorg-agent-name/repo", "namespace": "testorg-agent-name"},
+		"labels": [{"title": "agent"}, {"title": "Handler Test Agent"}],
+		"assignees": []
+	}`
+	req2 := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(payload2))
+	req2.Header.Set("X-Gitlab-Token", "s")
+	req2.Header.Set("X-Gitlab-Event", "Issue Hook")
+	w2 := httptest.NewRecorder()
+	testHandler.HandleGitLabWebhook(w2, req2)
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("exact: expected 204, got %d", w2.Code)
+	}
+	row2, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-agent-name/repo", GlIssueIid: 89,
+	})
+	if err != nil {
+		t.Fatalf("exact: gitlab_issue not created: %v", err)
+	}
+	issue2, err := testHandler.Queries.GetIssue(ctx, row2.IssueID)
+	if err != nil {
+		t.Fatalf("exact: issue not created: %v", err)
+	}
+	if !issue2.AssigneeID.Valid || uuidToString(issue2.AssigneeID) != uuidToString(seeded.ID) {
+		t.Fatalf("exact assignee_id: got %v, want %s", issue2.AssigneeID, uuidToString(seeded.ID))
+	}
+}
+
+// TestHandleGitLabIssueEvent_AssignsMatchingProject creates the Multica issue
+// under the project whose github_repo resource matches the GitLab repo URL.
+func TestHandleGitLabIssueEvent_AssignsMatchingProject(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-project",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: create connection: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	// Matching Multica project + github_repo resource for the GitLab path.
+	project, err := testHandler.Queries.CreateProject(ctx, db.CreateProjectParams{
+		WorkspaceID: wsUUID,
+		Title:       "GitLab-matched project",
+		Status:      "planned",
+		Priority:    "none",
+	})
+	if err != nil {
+		t.Fatalf("setup: create project: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = testHandler.Queries.DeleteProject(ctx, db.DeleteProjectParams{
+			ID: project.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	// Decoy project with a different repo — must not win.
+	decoy, err := testHandler.Queries.CreateProject(ctx, db.CreateProjectParams{
+		WorkspaceID: wsUUID,
+		Title:       "Decoy project",
+		Status:      "planned",
+		Priority:    "none",
+	})
+	if err != nil {
+		t.Fatalf("setup: create decoy project: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = testHandler.Queries.DeleteProject(ctx, db.DeleteProjectParams{
+			ID: decoy.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	_, err = testHandler.Queries.CreateProjectResource(ctx, db.CreateProjectResourceParams{
+		ProjectID:    project.ID,
+		WorkspaceID:  wsUUID,
+		ResourceType: "github_repo",
+		ResourceRef:  []byte(`{"url":"https://git.example.com/testorg-issue-project/repo.git"}`),
+		Position:     0,
+	})
+	if err != nil {
+		t.Fatalf("setup: create matching resource: %v", err)
+	}
+	_, err = testHandler.Queries.CreateProjectResource(ctx, db.CreateProjectResourceParams{
+		ProjectID:    decoy.ID,
+		WorkspaceID:  wsUUID,
+		ResourceType: "github_repo",
+		ResourceRef:  []byte(`{"url":"https://git.example.com/testorg-issue-project/other.git"}`),
+		Position:     0,
+	})
+	if err != nil {
+		t.Fatalf("setup: create decoy resource: %v", err)
+	}
+
+	payload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 77, "title": "Route me", "description": "to project", "action": "open"},
+		"project": {
+			"id": 777,
+			"path_with_namespace": "testorg-issue-project/repo",
+			"namespace": "testorg-issue-project",
+			"web_url": "https://git.example.com/testorg-issue-project/repo",
+			"git_http_url": "https://git.example.com/testorg-issue-project/repo.git",
+			"git_ssh_url": "git@git.example.com:testorg-issue-project/repo.git"
+		},
+		"labels": [{"title": "agent"}],
+		"assignees": []
+	}`
+	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(payload))
+	req.Header.Set("X-Gitlab-Token", "s")
+	req.Header.Set("X-Gitlab-Event", "Issue Hook")
+	w := httptest.NewRecorder()
+	testHandler.HandleGitLabWebhook(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+
+	row, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID,
+		ProjectPath: "testorg-issue-project/repo",
+		GlIssueIid:  77,
+	})
+	if err != nil {
+		t.Fatalf("gitlab_issue not created: %v", err)
+	}
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("multica issue not created: %v", err)
+	}
+	if !issue.ProjectID.Valid {
+		t.Fatal("expected issue.ProjectID to be set from matching project resource")
+	}
+	if uuidToString(issue.ProjectID) != uuidToString(project.ID) {
+		t.Errorf("issue.ProjectID = %s, want %s", uuidToString(issue.ProjectID), uuidToString(project.ID))
+	}
+
+	// Cleanup created issue (gitlab_issue cascades / explicit delete).
+	t.Cleanup(func() {
+		_ = testHandler.Queries.DeleteIssue(ctx, db.DeleteIssueParams{
+			ID: issue.ID, WorkspaceID: wsUUID,
+		})
+	})
 }
 
 // TestHandleGitLabIssueEvent_CustomSyncLabel creates a Multica issue when the
