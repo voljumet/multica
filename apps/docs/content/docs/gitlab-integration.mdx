@@ -41,9 +41,26 @@ Issues are synced one-way: GitLab → Multica. Adding the **sync trigger label**
 
 The label name is configured per workspace under **Settings → GitLab → Sync trigger label**. It defaults to **agent** so existing setups keep working without changes. Matching is exact (case-sensitive), same as GitLab label titles.
 
+### Assigning a Multica agent by name
+
+On create, Multica also looks at the issue’s other GitLab labels and tries to match a **workspace agent by name** (unique per workspace):
+
+| GitLab label | Matches agent named |
+|---|---|
+| `Coder` | `Coder` (exact title, case-insensitive) |
+| `agent::Coder` | `Coder` (prefix is the sync trigger label + `::`) |
+
+Rules:
+
+- The **sync trigger label** is still required to import the issue.
+- Exactly **one** user-agent must match. Zero matches → create unassigned. Two or more different agents → create unassigned (ambiguous).
+- System / persona agents are never assigned this way.
+- Assignment runs **only on create** (not when labels change later).
+- Assigning an agent uses the same enqueue path as assigning in Multica, so the agent can pick up the issue immediately.
+
 | GitLab event | Multica action |
 |---|---|
-| Sync trigger label added | Create Multica issue with title and description |
+| Sync trigger label added | Create Multica issue with title and description; assign agent if a label uniquely matches an agent name |
 | Sync trigger label removed | No delete — Multica issue and GitLab link stay |
 | Issue closed | Mark Multica issue **Done** |
 | Issue reopened | Mark Multica issue **In Progress** |

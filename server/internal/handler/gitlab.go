@@ -344,17 +344,28 @@ type gitlabIssuePayload struct {
 		Description string `json:"description"`
 		Action      string `json:"action"`
 	} `json:"object_attributes"`
-	Project struct {
-		ID                int64  `json:"id"`
-		PathWithNamespace string `json:"path_with_namespace"`
-		Namespace         string `json:"namespace"`
-	} `json:"project"`
-	Labels []struct {
+	Project  gitlabWebhookProject `json:"project"`
+	Labels   []struct {
 		Title string `json:"title"`
 	} `json:"labels"`
 	Assignees []struct {
 		Username string `json:"username"`
 	} `json:"assignees"`
+}
+
+// gitlabWebhookProject is the project object nested in GitLab webhooks.
+// URL fields vary slightly by GitLab version; we accept the common aliases.
+type gitlabWebhookProject struct {
+	ID                int64  `json:"id"`
+	PathWithNamespace string `json:"path_with_namespace"`
+	Namespace         string `json:"namespace"`
+	WebURL            string `json:"web_url"`
+	GitHTTPURL        string `json:"git_http_url"`
+	GitSSHURL         string `json:"git_ssh_url"`
+	// Older / alternate field names GitLab has used on project objects.
+	HTTPURL string `json:"http_url"`
+	SSHURL  string `json:"ssh_url"`
+	URL     string `json:"url"`
 }
 
 // gitlabNotePayload is the subset of GitLab's Note Hook webhook we consume.
@@ -736,6 +747,107 @@ func containsLabel(labels []struct {
 	return false
 }
 
+// gitlabLabelAgentNameCandidates returns possible Multica agent names encoded
+// in GitLab labels. Each label title is a candidate as-is; if it uses the
+// "{syncLabel}::{name}" form, the suffix is also a candidate (so "agent::Coder"
+// resolves against an agent named "Coder" when the sync label is "agent").
+func gitlabLabelAgentNameCandidates(labels []struct {
+	Title string `json:"title"`
+}, syncLabel string) []string {
+	prefix := ""
+	if syncLabel != "" {
+		prefix = syncLabel + "::"
+	}
+	var out []string
+	seen := map[string]struct{}{}
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		key := strings.ToLower(s)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, s)
+	}
+	for _, l := range labels {
+		title := strings.TrimSpace(l.Title)
+		if title == "" {
+			continue
+		}
+		add(title)
+		if prefix != "" && strings.HasPrefix(title, prefix) {
+			add(strings.TrimPrefix(title, prefix))
+		}
+	}
+	return out
+}
+
+// matchAgentByGitLabLabels picks a workspace user-agent whose name uniquely
+// matches a GitLab label (case-insensitive). Returns ok=false when zero or
+// multiple distinct agents match — create still proceeds unassigned.
+func matchAgentByGitLabLabels(agents []db.Agent, labels []struct {
+	Title string `json:"title"`
+}, syncLabel string) (db.Agent, bool) {
+	candidates := gitlabLabelAgentNameCandidates(labels, syncLabel)
+	if len(candidates) == 0 {
+		return db.Agent{}, false
+	}
+
+	// kind=user only — skip GitLab persona / system agents.
+	byLower := make(map[string][]db.Agent)
+	for _, a := range agents {
+		if a.Kind != "" && a.Kind != "user" {
+			continue
+		}
+		if a.ArchivedAt.Valid {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(a.Name))
+		if key == "" {
+			continue
+		}
+		byLower[key] = append(byLower[key], a)
+	}
+
+	matched := make(map[string]db.Agent) // agent id → agent
+	for _, cand := range candidates {
+		group := byLower[strings.ToLower(cand)]
+		if len(group) == 0 {
+			continue
+		}
+		// Prefer exact-case match when multiple agents only differ by case.
+		var pick db.Agent
+		if len(group) == 1 {
+			pick = group[0]
+		} else {
+			exact := false
+			for _, a := range group {
+				if a.Name == cand {
+					pick = a
+					exact = true
+					break
+				}
+			}
+			if !exact {
+				// Ambiguous case-only collision for this candidate — skip it.
+				continue
+			}
+		}
+		matched[uuidToString(pick.ID)] = pick
+	}
+
+	if len(matched) != 1 {
+		return db.Agent{}, false
+	}
+	for _, a := range matched {
+		return a, true
+	}
+	return db.Agent{}, false
+}
+
 func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConnection, body []byte) {
 	var p gitlabIssuePayload
 	if err := json.Unmarshal(body, &p); err != nil {
@@ -793,7 +905,15 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 				return
 			}
 
-			res, err := h.IssueService.Create(ctx, service.IssueCreateParams{
+			// Prefer the Multica project whose github_repo resource matches this
+			// GitLab repo (one-repo-per-project). Unmatched webhooks still create
+			// a workspace-level issue with no project.
+			projectID := h.resolveMulticaProjectForGitLabRepo(ctx, conn.WorkspaceID, p.Project)
+
+			// Assign a Multica agent when a GitLab label uniquely matches an
+			// agent name (exact title or "{syncLabel}::{name}"). Ambiguous or
+			// missing matches leave the issue unassigned.
+			createParams := service.IssueCreateParams{
 				WorkspaceID:    conn.WorkspaceID,
 				Title:          p.ObjectAttributes.Title,
 				Description:    pgtype.Text{String: p.ObjectAttributes.Description, Valid: p.ObjectAttributes.Description != ""},
@@ -801,8 +921,22 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 				Priority:       "none",
 				CreatorType:    "member",
 				CreatorID:      creatorID,
+				ProjectID:      projectID,
 				AllowDuplicate: true,
-			}, service.IssueCreateOpts{})
+			}
+			var assignedAgentID string
+			if agents, err := h.Queries.ListAgents(ctx, conn.WorkspaceID); err != nil {
+				slog.Warn("gitlab: list agents for label assign failed",
+					"workspace", workspaceID, "err", err)
+			} else if agent, ok := matchAgentByGitLabLabels(agents, p.Labels, syncLabel); ok {
+				createParams.AssigneeType = pgtype.Text{String: "agent", Valid: true}
+				createParams.AssigneeID = agent.ID
+				assignedAgentID = uuidToString(agent.ID)
+			}
+
+			res, err := h.IssueService.Create(ctx, createParams, service.IssueCreateOpts{
+				AnalyticsAgentID: assignedAgentID,
+			})
 			if err != nil {
 				slog.Error("gitlab: failed to create issue",
 					"err", err, "workspace", workspaceID, "project", projectPath, "gl_iid", glIID)
@@ -836,8 +970,10 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 				"gl_iid", glIID,
 				"issue_id", uuidToString(res.Issue.ID),
 				"issue_number", res.Issue.Number,
+				"multica_project_id", uuidToPtr(projectID),
 				"title", p.ObjectAttributes.Title,
 				"sync_label", syncLabel,
+				"assignee_agent_id", assignedAgentID,
 			)
 
 		} else if rowExists {
@@ -924,6 +1060,185 @@ func (h *Handler) gitlabCreatorID(ctx context.Context, conn db.GitlabConnection)
 		return pgtype.UUID{}, false
 	}
 	return members[0].UserID, true
+}
+
+// resolveMulticaProjectForGitLabRepo finds a Multica project in the workspace
+// whose attached github_repo resource matches the GitLab project from a
+// webhook. Matching is by repo identity (host+path, ignoring scheme/.git) and
+// falls back to path_with_namespace alone so operators who paste either the
+// HTTPS or SSH clone URL still resolve correctly.
+//
+// Returns an invalid UUID when no project matches (issue is created at
+// workspace scope). When multiple projects match, the earliest-created
+// resource wins and a warning is logged — the product assumes one repo per
+// Multica project.
+func (h *Handler) resolveMulticaProjectForGitLabRepo(ctx context.Context, workspaceID pgtype.UUID, glProject gitlabWebhookProject) pgtype.UUID {
+	resources, err := h.Queries.ListGithubRepoProjectResourcesByWorkspace(ctx, workspaceID)
+	if err != nil {
+		slog.Warn("gitlab: failed to list project resources for repo match",
+			"err", err, "workspace", uuidToString(workspaceID))
+		return pgtype.UUID{}
+	}
+	if len(resources) == 0 {
+		return pgtype.UUID{}
+	}
+
+	candidates := gitlabProjectCandidateURLs(glProject)
+	pathKey := normalizeGitRepoPath(glProject.PathWithNamespace)
+
+	var matched pgtype.UUID
+	var matchedURL string
+	for _, res := range resources {
+		repoURL, ok := githubRepoURLFromResourceRef(res.ResourceRef)
+		if !ok {
+			continue
+		}
+		if !gitRepoMatchesGitLabProject(repoURL, pathKey, candidates) {
+			continue
+		}
+		if matched.Valid {
+			slog.Warn("gitlab: multiple multica projects match gitlab repo; using first",
+				"workspace", uuidToString(workspaceID),
+				"path_with_namespace", glProject.PathWithNamespace,
+				"chosen_project_id", uuidToString(matched),
+				"also_matched_project_id", uuidToString(res.ProjectID),
+				"resource_url", repoURL,
+			)
+			continue
+		}
+		matched = res.ProjectID
+		matchedURL = repoURL
+	}
+	if matched.Valid {
+		slog.Info("gitlab: resolved multica project from repo resource",
+			"workspace", uuidToString(workspaceID),
+			"path_with_namespace", glProject.PathWithNamespace,
+			"multica_project_id", uuidToString(matched),
+			"resource_url", matchedURL,
+		)
+	}
+	return matched
+}
+
+// githubRepoURLFromResourceRef extracts resource_ref.url for a github_repo row.
+func githubRepoURLFromResourceRef(ref []byte) (string, bool) {
+	var payload struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(ref, &payload); err != nil {
+		return "", false
+	}
+	url := strings.TrimSpace(payload.URL)
+	if url == "" {
+		return "", false
+	}
+	return url, true
+}
+
+// gitlabProjectCandidateURLs collects every clone/web URL present on the
+// webhook project object, plus a synthetic URL from GITLAB_URL + path when
+// the instance base URL is configured.
+func gitlabProjectCandidateURLs(p gitlabWebhookProject) []string {
+	raw := []string{
+		p.GitHTTPURL,
+		p.GitSSHURL,
+		p.WebURL,
+		p.HTTPURL,
+		p.SSHURL,
+		p.URL,
+	}
+	if base := gitlabBaseURL(); base != "" && p.PathWithNamespace != "" {
+		raw = append(raw, strings.TrimRight(base, "/")+"/"+strings.Trim(p.PathWithNamespace, "/"))
+		raw = append(raw, strings.TrimRight(base, "/")+"/"+strings.Trim(p.PathWithNamespace, "/")+".git")
+	}
+	out := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, s := range raw {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+// gitRepoMatchesGitLabProject reports whether a Multica project resource URL
+// points at the same GitLab repository described by pathKey (normalized
+// path_with_namespace) and/or the candidate clone/web URLs from the webhook.
+func gitRepoMatchesGitLabProject(resourceURL, pathKey string, candidateURLs []string) bool {
+	rHost, rPath := splitGitRemote(resourceURL)
+	if rPath == "" {
+		return false
+	}
+	for _, c := range candidateURLs {
+		cHost, cPath := splitGitRemote(c)
+		if cPath == "" {
+			continue
+		}
+		if rPath != cPath {
+			continue
+		}
+		// Same path: require host agreement when both sides have one.
+		if cHost != "" && rHost != "" && cHost != rHost {
+			continue
+		}
+		return true
+	}
+	// Path-only fallback when the webhook only carried path_with_namespace
+	// (or URLs failed to parse). Safe under the one-repo-per-project model.
+	return pathKey != "" && rPath == pathKey
+}
+
+// splitGitRemote extracts a comparable host + path from a git remote URL.
+// Supports https://, http://, ssh://, git://, and scp-like git@host:path forms.
+// Path is lowercased and stripped of a trailing ".git". Host is lowercased and
+// port-stripped (Hostname()) so https://host/path matches git@host:path.
+func splitGitRemote(raw string) (host, path string) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, "/")
+	if raw == "" {
+		return "", ""
+	}
+
+	if u, err := url.Parse(raw); err == nil && u.Scheme != "" && u.Host != "" {
+		host = strings.ToLower(u.Hostname())
+		path = normalizeGitRepoPath(u.Path)
+		return host, path
+	}
+
+	// scp-like: [user@]host:path
+	s := raw
+	if i := strings.Index(s, "@"); i >= 0 && !strings.Contains(s[:i], "://") {
+		s = s[i+1:]
+	}
+	if i := strings.Index(s, ":"); i > 0 {
+		host = strings.ToLower(s[:i])
+		// host may include a non-standard port written as host:port/path after
+		// scp conversion failures — keep only hostname before any residual '/'.
+		if j := strings.Index(host, "/"); j >= 0 {
+			host = host[:j]
+		}
+		path = normalizeGitRepoPath(s[i+1:])
+		return host, path
+	}
+
+	// Bare path (e.g. path_with_namespace alone).
+	return "", normalizeGitRepoPath(raw)
+}
+
+// normalizeGitRepoPath lowercases a repo path, trims slashes, and drops a
+// trailing ".git" suffix.
+func normalizeGitRepoPath(p string) string {
+	p = strings.TrimSpace(p)
+	p = strings.Trim(p, "/")
+	p = strings.TrimSuffix(p, ".git")
+	p = strings.Trim(p, "/")
+	return strings.ToLower(p)
 }
 
 // gitlabMRPayload is the subset of GitLab's merge_request webhook we consume.
