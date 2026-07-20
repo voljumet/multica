@@ -284,26 +284,23 @@ export default function WorkspaceLayout() {
         {/* Shared filter sheet for My Issues and the workspace Issues page —
             chooses the right view-store via `?scope=my|all` URL param. */}
         <Stack.Screen name="issues-filter" options={SHEET_OPTIONS} />
+        <Stack.Screen name="issues-project-filter" options={SHEET_OPTIONS} />
         {/* Chat session-switch sheet. */}
         <Stack.Screen name="chat-sessions" options={SHEET_OPTIONS} />
         {/* Workspace switcher — reached from the More popover's collapsed
             WorkspaceCard. Two-step (pick → iOS Alert confirm → switch). */}
         <Stack.Screen name="switch-workspace" options={SHEET_OPTIONS} />
         <Stack.Screen
-          name="more/issues"
-          options={{ title: "Issues", headerBackTitle: "Back" }}
-        />
-        <Stack.Screen
-          name="more/projects"
-          options={{ title: "Projects", headerBackTitle: "Back" }}
-        />
-        <Stack.Screen
           name="more/agents"
           options={{ title: "Agents", headerBackTitle: "Back" }}
         />
         <Stack.Screen
-          name="more/pins"
-          options={{ title: "Pinned", headerBackTitle: "Back" }}
+          name="more/inbox"
+          options={{ title: "Inbox", headerBackTitle: "Back" }}
+        />
+        <Stack.Screen
+          name="more/my-issues"
+          options={{ title: "My Issues", headerBackTitle: "Back" }}
         />
         <Stack.Screen
           name="more/settings"

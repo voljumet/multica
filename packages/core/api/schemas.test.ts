@@ -20,6 +20,7 @@ import {
   InboxItemListSchema,
   InboxUnreadSummarySchema,
   IssueTriggerPreviewSchema,
+  IssueUsageSummarySchema,
   ListIssuesResponseSchema,
   ListPropertiesResponseSchema,
   SearchProjectsResponseSchema,
@@ -946,5 +947,31 @@ describe("CommentTriggerPreviewSchema.blocked", () => {
       ],
     });
     expect(parsed.blocked.map((b) => b.target_id)).toEqual(["s1", "a1"]);
+  });
+});
+
+describe("IssueUsageSummarySchema", () => {
+  it("fills defaults for a malformed response", () => {
+    const parsed = IssueUsageSummarySchema.parse({});
+    expect(parsed.total_input_tokens).toBe(0);
+    expect(parsed.task_count).toBe(0);
+    expect(parsed.tasks).toEqual([]);
+  });
+
+  it("defaults missing fields inside task rows", () => {
+    const parsed = IssueUsageSummarySchema.parse({
+      total_input_tokens: 10,
+      tasks: [{ model: "claude-sonnet-4.6" }],
+    });
+    const task = parsed.tasks[0]!;
+    expect(task.model).toBe("claude-sonnet-4.6");
+    expect(task.input_tokens).toBe(0);
+    expect(task.comment_triggered).toBe(false);
+    expect(task.trigger_comment_id).toBe("");
+  });
+
+  it("rejects a non-array tasks field", () => {
+    const parsed = IssueUsageSummarySchema.safeParse({ tasks: "nope" });
+    expect(parsed.success).toBe(false);
   });
 });

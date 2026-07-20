@@ -199,6 +199,7 @@ function IssueSurfaceContent({
             scopedIssues={controller.surfaceIssues}
             workingIssues={workingIssues}
             allowGantt={controller.allowGantt}
+            showProjectFilter={!controller.projectId}
             isRefreshing={controller.isRefreshing}
             facetCountsExact={
               !(controller.viewMode === "table" && controller.hasNextFlatPage)

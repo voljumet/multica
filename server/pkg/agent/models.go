@@ -246,6 +246,7 @@ func isRuntimeSpecificModelID(model string) bool {
 func modelHasKnownPrefix(model string) bool {
 	return strings.HasPrefix(model, "claude-") ||
 		strings.HasPrefix(model, "gpt-") ||
+		strings.HasPrefix(model, "grok-") ||
 		strings.HasPrefix(model, "gemini-") ||
 		strings.HasPrefix(model, "auto-gemini-") ||
 		isOpenAIReasoningSeriesID(model)

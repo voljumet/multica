@@ -309,7 +309,21 @@
     "link_copy_failed": "Failed to copy link",
     "workdir_path_copied": "Workdir path copied",
     "workdir_path_copy_failed": "Failed to copy workdir path",
-    "workdir_path_unavailable": "No local workdir yet — issue has not been run by a local agent"
+    "workdir_path_unavailable": "No local workdir yet — issue has not been run by a local agent",
+    "prop_est_cost": "Est. cost",
+    "prop_cache_tooltip": "Cache read: earlier context replayed at ~10% of the input price (a big number here is good). Cache write: context stored for reuse, ~25% over the input price.",
+    "prop_input_tooltip": "Fresh tokens sent to the model, not served from cache.",
+    "prop_output_tooltip": "Tokens the model generated.",
+    "usage_seg_input": "in {{n}}",
+    "usage_seg_output": "out {{n}}",
+    "usage_seg_cache": "cache {{n}}",
+    "usage_seg_cache_rw": "cache {{read}} read / {{write}} write",
+    "usage_run_split_tooltip": "in: fresh tokens sent to the model · out: tokens generated · cache: earlier context replayed from cache at ~10% of the input price — large cache numbers are normal for long runs.",
+    "usage_run_comment": "Comment",
+    "usage_run_comment_numbered": "Comment {{n}}",
+    "usage_run_assignment": "Assignment",
+    "usage_runs_toggle_one": "{{count}} run",
+    "usage_runs_toggle_other": "{{count}} runs"
   },
   "timeline": {
     "loading": "Loading..."

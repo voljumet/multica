@@ -306,7 +306,21 @@
     "link_copy_failed": "复制链接失败",
     "workdir_path_copied": "已复制本地 workdir 路径",
     "workdir_path_copy_failed": "复制本地 workdir 路径失败",
-    "workdir_path_unavailable": "暂无本地 workdir — 这个 issue 还没被本地 agent 运行过"
+    "workdir_path_unavailable": "暂无本地 workdir — 这个 issue 还没被本地 agent 运行过",
+    "prop_est_cost": "预估费用",
+    "prop_cache_tooltip": "缓存读取：以约输入价 10% 重放先前上下文（数值大通常更好）。缓存写入：为复用存储上下文，约为输入价的 25% 溢价。",
+    "prop_input_tooltip": "发送给模型的新 token，非缓存。",
+    "prop_output_tooltip": "模型生成的 token。",
+    "usage_seg_input": "输入 {{n}}",
+    "usage_seg_output": "输出 {{n}}",
+    "usage_seg_cache": "缓存 {{n}}",
+    "usage_seg_cache_rw": "缓存 读 {{read}} / 写 {{write}}",
+    "usage_run_split_tooltip": "输入：发给模型的新 token · 输出：生成的 token · 缓存：以约输入价 10% 重放的上下文 — 长任务缓存偏大很正常。",
+    "usage_run_comment": "评论",
+    "usage_run_comment_numbered": "评论 {{n}}",
+    "usage_run_assignment": "指派",
+    "usage_runs_toggle_one": "{{count}} 次运行",
+    "usage_runs_toggle_other": "{{count}} 次运行"
   },
   "timeline": {
     "loading": "加载中…"

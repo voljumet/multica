@@ -4,23 +4,13 @@
  * Reached from the More popover's WorkspaceCard (collapsed single-row entry).
  * Lists every workspace the user belongs to, current one disabled with a
  * checkmark. Tapping a non-current row triggers an iOS-native `Alert.alert`
- * confirm — only after the user confirms do we dismiss the sheet and
- * `router.replace` to the target slug.
- *
- * Why a confirm step:
- *   The previous flow ("popover → tap row → instant switch") had no friction
- *   against fat-finger taps in the cramped popover, and the user lost their
- *   entire navigation context (tabs, scroll position) with one accidental
- *   tap. iOS Alert is the platform-correct gate (mobile/CLAUDE.md Principle
- *   3 — iOS native > RNR > discuss).
- *
- * Switching itself stays minimal: `router.dismiss()` to close this sheet,
- * then `router.replace(/${slug}/inbox)`. The downstream WorkspaceRouteLayout
- * handles `setCurrentWorkspace(slug, uuid)` on mount.
+ * confirm — only after the user confirms do we dismiss the sheet and navigate
+ * to the target workspace.
  */
 import {
   ActivityIndicator,
   Alert,
+  InteractionManager,
   Pressable,
   ScrollView,
   View,
@@ -39,6 +29,7 @@ import { cn } from "@/lib/utils";
 
 export default function SwitchWorkspaceRoute() {
   const activeSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
+  const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
   const { colorScheme } = useColorScheme();
   const t = THEME[colorScheme];
   const { data, isLoading } = useQuery(workspaceListOptions());
@@ -53,8 +44,13 @@ export default function SwitchWorkspaceRoute() {
         {
           text: "Switch",
           onPress: () => {
-            router.dismiss();
-            router.replace(`/${ws.slug}/inbox`);
+            void (async () => {
+              await setCurrentWorkspace(ws.id, ws.slug);
+              router.dismiss();
+              InteractionManager.runAfterInteractions(() => {
+                router.replace(`/${ws.slug}/issues`);
+              });
+            })();
           },
         },
       ],

@@ -306,7 +306,21 @@
     "link_copy_failed": "リンクをコピーできませんでした",
     "workdir_path_copied": "作業ディレクトリのパスをコピーしました",
     "workdir_path_copy_failed": "作業ディレクトリのパスをコピーできませんでした",
-    "workdir_path_unavailable": "まだローカルの作業ディレクトリがありません。ローカルエージェントがこのイシューを実行していません"
+    "workdir_path_unavailable": "まだローカルの作業ディレクトリがありません。ローカルエージェントがこのイシューを実行していません",
+    "prop_est_cost": "概算コスト",
+    "prop_cache_tooltip": "キャッシュ読み取り: 以前のコンテキストを入力価格の約10%で再実行（大きいほど良い）。キャッシュ書き込み: 再利用のため保存、入力価格の約25%増。",
+    "prop_input_tooltip": "キャッシュではなく、モデルに送信された新規トークン。",
+    "prop_output_tooltip": "モデルが生成したトークン。",
+    "usage_seg_input": "入力 {{n}}",
+    "usage_seg_output": "出力 {{n}}",
+    "usage_seg_cache": "キャッシュ {{n}}",
+    "usage_seg_cache_rw": "キャッシュ 読 {{read}} / 書 {{write}}",
+    "usage_run_split_tooltip": "入力: モデルに送った新規トークン · 出力: 生成トークン · キャッシュ: 約10%価格で再実行された以前のコンテキスト — 長時間実行ではキャッシュが大きいのは普通です。",
+    "usage_run_comment": "コメント",
+    "usage_run_comment_numbered": "コメント {{n}}",
+    "usage_run_assignment": "割り当て",
+    "usage_runs_toggle_one": "{{count}} 回の実行",
+    "usage_runs_toggle_other": "{{count}} 回の実行"
   },
   "timeline": {
     "loading": "読み込み中..."

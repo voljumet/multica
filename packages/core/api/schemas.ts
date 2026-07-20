@@ -25,6 +25,7 @@ import type {
   IssueProperty,
   ListPropertiesResponse,
   IssuePropertiesResponse,
+  IssueUsageSummary,
   ListIssuesResponse,
   ListLabelsResponse,
   ListWebhookDeliveriesResponse,
@@ -651,6 +652,37 @@ const DashboardUsageByAgentSchema = z.object({
 }).loose();
 
 export const DashboardUsageByAgentListSchema = z.array(DashboardUsageByAgentSchema);
+
+export const IssueTaskUsageSchema = z.object({
+  task_id: z.string().default(""),
+  created_at: z.string().default(""),
+  comment_triggered: z.boolean().default(false),
+  trigger_comment_id: z.string().default(""),
+  provider: z.string().default(""),
+  model: z.string().default(""),
+  input_tokens: z.number().default(0),
+  output_tokens: z.number().default(0),
+  cache_read_tokens: z.number().default(0),
+  cache_write_tokens: z.number().default(0),
+});
+
+export const IssueUsageSummarySchema = z.object({
+  total_input_tokens: z.number().default(0),
+  total_output_tokens: z.number().default(0),
+  total_cache_read_tokens: z.number().default(0),
+  total_cache_write_tokens: z.number().default(0),
+  task_count: z.number().default(0),
+  tasks: z.array(IssueTaskUsageSchema).default([]),
+});
+
+export const EMPTY_ISSUE_USAGE: IssueUsageSummary = {
+  total_input_tokens: 0,
+  total_output_tokens: 0,
+  total_cache_read_tokens: 0,
+  total_cache_write_tokens: 0,
+  task_count: 0,
+  tasks: [],
+};
 
 const DashboardAgentRunTimeSchema = z.object({
   agent_id: z.string().default(""),

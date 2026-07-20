@@ -1,26 +1,12 @@
 /**
- * Workspace-wide Issues page. Mirrors web `packages/views/issues/components/
- * issues-page.tsx:32-94`: fetch every issue in the workspace, expose
- * `all / members / agents` scope tabs, group by status, allow status +
- * priority filtering.
+ * Workspace-wide Issues tab. Moved from more/issues.tsx; header is now
+ * the in-body <Header> component since tab roots have headerShown: false.
  *
- * Scope is a **client-side** filter on `assignee_type` — matches web
- * `issues-page.tsx:90-94`. This keeps `issueListOptions(wsId)` workspace-
- * scoped (no scope param on the wire), so `issueKeys.list(wsId)` and
- * `useIssuesRealtime` need no changes.
- *
- * Differences vs My Issues (`(tabs)/my-issues.tsx`):
- *   - Workspace-wide list (all issues), not user-scoped.
- *   - Three scopes are `all / members / agents` (assignee_type pre-filter),
- *     not `assigned / created / agents` (per-user predicates).
- *   - Independent filter store (`useIssuesViewStore`) so workspace-level
- *     filters don't bleed into the per-user view.
- *
- * Filters beyond status/priority (assignee / project / label / creator)
- * are deferred — power-user features with non-trivial picker cost; ship
- * after the parity-critical scope tabs land.
+ * Mirrors web `packages/views/issues/components/issues-page.tsx:32-94`:
+ * fetch every issue in the workspace, expose `all / members / agents`
+ * scope tabs, group by status, allow status + priority + project filtering.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Pressable, SectionList, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -28,20 +14,19 @@ import { Ionicons } from "@expo/vector-icons";
 import type { Issue, IssuePriority, IssueStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
-// Header chrome (back + "Issues" title) comes from the parent Stack
-// (`apps/mobile/app/(app)/[workspace]/_layout.tsx:269`). The Filter
-// affordance now lives in <ScopeToolbar> below, matching web's
-// IssuesHeader pattern (scope + filter share a row).
+import { Header } from "@/components/ui/header";
+import { HeaderActions } from "@/components/ui/app-header-actions";
 import { StatusIcon } from "@/components/ui/status-icon";
 import { IssueRow } from "@/components/issue/issue-row";
 import { IssuesLoading } from "@/components/issue/issues-loading";
 import { issueListOptions } from "@/data/queries/issues";
+import { projectListOptions } from "@/data/queries/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import {
   useIssuesViewStore,
   type IssuesScope,
 } from "@/data/stores/issues-view-store";
-import { useClearFiltersOnWorkspaceChange } from "@/lib/use-clear-filters-on-workspace-change";
+
 import {
   BOARD_STATUSES,
   PRIORITY_LABEL,
@@ -51,20 +36,15 @@ import { filterIssues } from "@/lib/filter-issues";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 
-type IssueSection = { status: IssueStatus; data: Issue[] };
+type IssueSection = { status: IssueStatus; data: Issue[]; count: number };
 
-// Scope tab definitions. Mirrors web `issuesScopeStore`. Counts are NOT
-// rendered on the pill labels — web's `IssuesHeader` doesn't show them
-// either, and on SE3 (375pt) "(123)" appended to each label pushes the
-// row past the safe width when filter icon shares the row. Per-status
-// counts still appear on the SectionList headers below.
 const SCOPES: { value: IssuesScope; label: string }[] = [
   { value: "all", label: "All" },
   { value: "members", label: "Members" },
   { value: "agents", label: "Agents" },
 ];
 
-export default function IssuesPage() {
+export default function IssuesTab() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
 
@@ -72,6 +52,26 @@ export default function IssuesPage() {
   const setScope = useIssuesViewStore((s) => s.setScope);
   const statusFilters = useIssuesViewStore((s) => s.statusFilters);
   const priorityFilters = useIssuesViewStore((s) => s.priorityFilters);
+  const projectFilters = useIssuesViewStore((s) => s.projectFilters);
+  const includeNoProject = useIssuesViewStore((s) => s.includeNoProject);
+  const sortByLastEdited = useIssuesViewStore((s) => s.sortByLastEdited);
+  const collapsedStatuses = useIssuesViewStore((s) => s.collapsedStatuses);
+  const toggleStatusCollapse = useIssuesViewStore((s) => s.toggleStatusCollapse);
+  const hydrateForWorkspace = useIssuesViewStore((s) => s.hydrateForWorkspace);
+
+  useEffect(() => {
+    if (wsSlug) void hydrateForWorkspace(wsSlug);
+  }, [wsSlug, hydrateForWorkspace]);
+
+  const { data: projects = [] } = useQuery(projectListOptions(wsId));
+
+  const openProjectFilter = () => {
+    if (!wsSlug) return;
+    router.push({
+      pathname: "/[workspace]/issues-project-filter",
+      params: { workspace: wsSlug },
+    });
+  };
 
   const openFilter = () => {
     if (!wsSlug) return;
@@ -81,19 +81,12 @@ export default function IssuesPage() {
     });
   };
 
-  useClearFiltersOnWorkspaceChange(
-    useIssuesViewStore.getState().clearFilters,
-    wsId,
-  );
-
   const { data, isLoading, error, refetch, isRefetching } = useQuery(
     issueListOptions(wsId),
   );
 
   const allIssues = data ?? [];
 
-  // Scope pre-filter — mirrors web `issues-page.tsx:90-94`. Applied before
-  // status/priority filtering so chip filters operate on the visible slice.
   const scopedIssues = useMemo(() => {
     if (scope === "members") {
       return allIssues.filter((i) => i.assignee_type === "member");
@@ -106,13 +99,24 @@ export default function IssuesPage() {
     return allIssues;
   }, [allIssues, scope]);
 
-  const filtered = useMemo(
-    () => filterIssues(scopedIssues, statusFilters, priorityFilters),
-    [scopedIssues, statusFilters, priorityFilters],
-  );
+  const filtered = useMemo(() => {
+    const f = filterIssues(scopedIssues, {
+      statusFilters,
+      priorityFilters,
+      projectFilters,
+      includeNoProject,
+    });
+    if (!sortByLastEdited) return f;
+    return [...f].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  }, [
+    scopedIssues,
+    statusFilters,
+    priorityFilters,
+    projectFilters,
+    includeNoProject,
+    sortByLastEdited,
+  ]);
 
-  // Section grouping uses BOARD_STATUSES (cancelled excluded) — matches web
-  // `issues-page.tsx:117-125`.
   const sections = useMemo<IssueSection[]>(() => {
     if (filtered.length === 0) return [];
     const byStatus = new Map<IssueStatus, Issue[]>();
@@ -126,21 +130,49 @@ export default function IssuesPage() {
         ? BOARD_STATUSES.filter((s) => statusFilters.includes(s))
         : BOARD_STATUSES;
     return visibleStatuses
-      .map((status) => ({ status, data: byStatus.get(status) ?? [] }))
-      .filter((s) => s.data.length > 0);
+      .map((status) => {
+        const data = byStatus.get(status) ?? [];
+        return { status, data, count: data.length };
+      })
+      .filter((s) => s.count > 0);
   }, [filtered, statusFilters]);
 
+  const displaySections = useMemo(
+    () =>
+      sections.map((s) => ({
+        ...s,
+        data: collapsedStatuses.includes(s.status) ? ([] as Issue[]) : s.data,
+      })),
+    [sections, collapsedStatuses],
+  );
+
   const hasActiveFilters =
-    statusFilters.length > 0 || priorityFilters.length > 0;
+    statusFilters.length > 0 ||
+    priorityFilters.length > 0 ||
+    projectFilters.length > 0 ||
+    includeNoProject ||
+    sortByLastEdited;
+
+  const hasActiveProjectFilter =
+    projectFilters.length > 0 || includeNoProject;
+
+  const projectTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of projects) map.set(p.id, p.title);
+    return map;
+  }, [projects]);
 
   const showEmptyState = !isLoading && !error && filtered.length === 0;
 
   return (
     <View className="flex-1 bg-background">
+      <Header title="Issues" right={<HeaderActions />} />
       <ScopeToolbar
         scopes={SCOPES}
         scope={scope}
         onChange={(v) => setScope(v)}
+        onOpenProjectFilter={openProjectFilter}
+        hasActiveProjectFilter={hasActiveProjectFilter}
         onOpenFilter={openFilter}
         hasActiveFilters={hasActiveFilters}
       />
@@ -148,11 +180,20 @@ export default function IssuesPage() {
         <ActiveFilterChips
           statusFilters={statusFilters}
           priorityFilters={priorityFilters}
+          projectFilters={projectFilters}
+          includeNoProject={includeNoProject}
+          projectTitleById={projectTitleById}
           onClearStatus={(s) =>
             useIssuesViewStore.getState().toggleStatusFilter(s)
           }
           onClearPriority={(p) =>
             useIssuesViewStore.getState().togglePriorityFilter(p)
+          }
+          onClearProject={(id) =>
+            useIssuesViewStore.getState().toggleProjectFilter(id)
+          }
+          onClearNoProject={() =>
+            useIssuesViewStore.getState().toggleNoProject()
           }
         />
       ) : null}
@@ -178,14 +219,19 @@ export default function IssuesPage() {
         />
       ) : (
         <SectionList
-          sections={sections}
+          sections={displaySections}
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
           ItemSeparatorComponent={() => (
             <View className="h-px bg-border ml-4" />
           )}
           renderSectionHeader={({ section }) => (
-            <SectionHeader status={section.status} count={section.data.length} />
+            <SectionHeader
+              status={section.status}
+              count={section.count}
+              collapsed={collapsedStatuses.includes(section.status)}
+              onToggle={() => toggleStatusCollapse(section.status)}
+            />
           )}
           contentContainerClassName="pb-6"
           renderItem={({ item }) => (
@@ -204,11 +250,6 @@ export default function IssuesPage() {
   );
 }
 
-/**
- * Outline icon button matching the pill height. Identical to the helper in
- * `(tabs)/my-issues.tsx` for the same reason ScopeToolbar is duplicated:
- * two callers don't justify a shared primitive yet.
- */
 function FilterButton({
   onPress,
   hasActiveFilters,
@@ -242,24 +283,20 @@ function FilterButton({
   );
 }
 
-/**
- * Toolbar row mirroring web `IssuesHeader`
- * (`packages/views/issues/components/issues-header.tsx:516-543`): left-aligned
- * scope pill group + right-side Filter icon (red dot on active filters).
- * Identical to the equivalent in `(tabs)/my-issues.tsx` — kept duplicated
- * because the threshold for a shared `components/ui/` primitive is 3 callers,
- * and two callers don't justify the abstraction yet.
- */
 function ScopeToolbar<S extends string>({
   scopes,
   scope,
   onChange,
+  onOpenProjectFilter,
+  hasActiveProjectFilter,
   onOpenFilter,
   hasActiveFilters,
 }: {
   scopes: { value: S; label: string }[];
   scope: S;
   onChange: (value: S) => void;
+  onOpenProjectFilter: () => void;
+  hasActiveProjectFilter: boolean;
   onOpenFilter: () => void;
   hasActiveFilters: boolean;
 }) {
@@ -286,6 +323,32 @@ function ScopeToolbar<S extends string>({
             </Button>
           );
         })}
+        <View style={{ position: "relative" }}>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={onOpenProjectFilter}
+            className={hasActiveProjectFilter ? "bg-accent" : ""}
+            accessibilityLabel="Filter by project"
+          >
+            <Text
+              numberOfLines={1}
+              className={
+                hasActiveProjectFilter
+                  ? "text-accent-foreground"
+                  : "text-muted-foreground"
+              }
+            >
+              Projects
+            </Text>
+          </Button>
+          {hasActiveProjectFilter ? (
+            <View
+              pointerEvents="none"
+              className="absolute top-1 right-1 size-1.5 rounded-full bg-brand"
+            />
+          ) : null}
+        </View>
       </View>
       <FilterButton
         onPress={onOpenFilter}
@@ -298,13 +361,23 @@ function ScopeToolbar<S extends string>({
 function ActiveFilterChips({
   statusFilters,
   priorityFilters,
+  projectFilters,
+  includeNoProject,
+  projectTitleById,
   onClearStatus,
   onClearPriority,
+  onClearProject,
+  onClearNoProject,
 }: {
   statusFilters: IssueStatus[];
   priorityFilters: IssuePriority[];
+  projectFilters: string[];
+  includeNoProject: boolean;
+  projectTitleById: Map<string, string>;
   onClearStatus: (s: IssueStatus) => void;
   onClearPriority: (p: IssuePriority) => void;
+  onClearProject: (id: string) => void;
+  onClearNoProject: () => void;
 }) {
   return (
     <View className="flex-row flex-wrap gap-1.5 px-4 pb-2">
@@ -320,6 +393,16 @@ function ActiveFilterChips({
           key={`p-${p}`}
           label={PRIORITY_LABEL[p]}
           onClear={() => onClearPriority(p)}
+        />
+      ))}
+      {includeNoProject ? (
+        <Chip label="No project" onClear={onClearNoProject} />
+      ) : null}
+      {projectFilters.map((id) => (
+        <Chip
+          key={`proj-${id}`}
+          label={projectTitleById.get(id) ?? "Project"}
+          onClear={() => onClearProject(id)}
         />
       ))}
     </View>
@@ -346,18 +429,34 @@ function Chip({ label, onClear }: { label: string; onClear: () => void }) {
 function SectionHeader({
   status,
   count,
+  collapsed,
+  onToggle,
 }: {
   status: IssueStatus;
   count: number;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
+  const { colorScheme } = useColorScheme();
+  const t = THEME[colorScheme];
   return (
-    <View className="flex-row items-center gap-2 px-4 py-2 bg-background">
+    <Pressable
+      onPress={onToggle}
+      className="flex-row items-center gap-2 px-4 py-2 bg-background active:bg-secondary"
+      accessibilityRole="button"
+      accessibilityLabel={`${STATUS_LABEL[status]}, ${count} issues, ${collapsed ? "collapsed" : "expanded"}`}
+    >
       <StatusIcon status={status} size={14} />
-      <Text className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+      <Text className="flex-1 text-xs uppercase tracking-wider text-muted-foreground font-medium">
         {STATUS_LABEL[status]}
       </Text>
-      <Text className="text-xs text-muted-foreground/60">{count}</Text>
-    </View>
+      <Text className="text-xs text-muted-foreground/60 mr-1">{count}</Text>
+      <Ionicons
+        name={collapsed ? "chevron-forward" : "chevron-down"}
+        size={12}
+        color={t.mutedForeground}
+      />
+    </Pressable>
   );
 }
 

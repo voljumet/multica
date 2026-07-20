@@ -155,6 +155,7 @@ var allFileBasedProviders = []string{
 	"kimi",
 	"kiro",
 	"antigravity",
+	"grok",
 }
 
 // TestPrepareThenCleanupSidecarsRoundTripEmptyWorkdir is the headline

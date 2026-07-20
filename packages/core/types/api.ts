@@ -267,7 +267,10 @@ export interface UpdateMeRequest {
 }
 
 export interface CreateMemberRequest {
-  email: string;
+  /** Invite/add by email (creates an account if needed). */
+  email?: string;
+  /** Add an existing known user by id (company multi-workspace add). */
+  user_id?: string;
   role?: MemberRole;
 }
 

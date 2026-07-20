@@ -1,20 +1,18 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import {
   ActionSheetIOS,
   Alert,
   FlatList,
   View,
 } from "react-native";
+import { Stack, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import type { InboxItem } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Header } from "@/components/ui/header";
 import { IconButton } from "@/components/ui/icon-button";
-import { HeaderActions } from "@/components/ui/app-header-actions";
 import { SwipeableInboxRow } from "@/components/inbox/swipeable-inbox-row";
 import { inboxListOptions } from "@/data/queries/inbox";
 import {
@@ -30,7 +28,7 @@ import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 import { deduplicateInboxItems } from "@/lib/inbox-display";
 
-export default function Inbox() {
+export default function InboxPage() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const { colorScheme } = useColorScheme();
@@ -52,10 +50,6 @@ export default function Inbox() {
 
   const onPressItem = (item: InboxItem) => {
     if (!item.read) {
-      // Optimistic read flip lives in useMarkInboxRead.onMutate — fires
-      // setQueryData synchronously before the cancelQueries await, so the
-      // row is already styled "read" by the time iOS captures the source
-      // snapshot for the native stack push transition.
       markRead.mutate(item.id);
     }
     if (item.issue_id && wsSlug) {
@@ -71,11 +65,7 @@ export default function Inbox() {
     }
   };
 
-  // Trailing batch menu — mirrors web's dropdown
-  // (packages/views/inbox/components/inbox-page.tsx). "Mark all read" is
-  // first (most common batch op); "Archive all" is destructive so it gets
-  // the iOS red treatment + Alert confirm.
-  const onPressMenu = () => {
+  const onPressMenu = useCallback(() => {
     const options = [
       "Cancel",
       "Mark all read",
@@ -110,23 +100,22 @@ export default function Inbox() {
         }
       },
     );
-  };
+  }, [markAllRead, archiveAllRead, archiveCompleted, archiveAll]);
+
+  const inboxHeaderRight = useCallback(
+    () => (
+      <IconButton
+        name="ellipsis-horizontal"
+        onPress={onPressMenu}
+        accessibilityLabel="Inbox actions"
+      />
+    ),
+    [onPressMenu],
+  );
 
   return (
     <View className="flex-1 bg-background">
-      <Header
-        title="Inbox"
-        right={
-          <>
-            <IconButton
-              name="ellipsis-horizontal"
-              onPress={onPressMenu}
-              accessibilityLabel="Inbox actions"
-            />
-            <HeaderActions />
-          </>
-        }
-      />
+      <Stack.Screen options={{ headerRight: inboxHeaderRight }} />
       {isLoading ? (
         <InboxLoading />
       ) : error ? (
@@ -164,9 +153,6 @@ export default function Inbox() {
   );
 }
 
-// Loading state — 6 row-shaped Skeletons matching InboxRow's layout
-// (avatar circle + two text lines). Perceived perf wins over a centered
-// spinner because the eye immediately sees the list-like structure.
 function InboxLoading() {
   return (
     <View className="px-4 pt-4 gap-4">

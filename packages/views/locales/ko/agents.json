@@ -93,6 +93,7 @@
   "row_actions": {
     "cancel_all_tasks": "모든 작업 취소",
     "duplicate": "복제",
+    "deploy_to_workspace": "워크스페이스에 배포",
     "restore": "복원",
     "archive": "보관",
     "set_access": "접근 범위 설정",

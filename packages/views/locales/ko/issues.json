@@ -306,7 +306,21 @@
     "link_copy_failed": "링크를 복사하지 못했습니다",
     "workdir_path_copied": "작업 디렉터리 경로를 복사했습니다",
     "workdir_path_copy_failed": "작업 디렉터리 경로를 복사하지 못했습니다",
-    "workdir_path_unavailable": "아직 로컬 작업 디렉터리가 없습니다. 로컬 에이전트가 이 이슈를 실행하지 않았습니다"
+    "workdir_path_unavailable": "아직 로컬 작업 디렉터리가 없습니다. 로컬 에이전트가 이 이슈를 실행하지 않았습니다",
+    "prop_est_cost": "예상 비용",
+    "prop_cache_tooltip": "캐시 읽기: 이전 컨텍스트를 입력 가격의 약 10%로 재사용(클수록 좋음). 캐시 쓰기: 재사용을 위해 저장, 입력 가격의 약 25% 할증.",
+    "prop_input_tooltip": "캐시가 아닌 모델로 보낸 새 토큰.",
+    "prop_output_tooltip": "모델이 생성한 토큰.",
+    "usage_seg_input": "입력 {{n}}",
+    "usage_seg_output": "출력 {{n}}",
+    "usage_seg_cache": "캐시 {{n}}",
+    "usage_seg_cache_rw": "캐시 읽기 {{read}} / 쓰기 {{write}}",
+    "usage_run_split_tooltip": "입력: 모델로 보낸 새 토큰 · 출력: 생성 토큰 · 캐시: 입력 가격의 약 10%로 재사용된 이전 컨텍스트 — 긴 실행에서 큰 캐시 값은 정상입니다.",
+    "usage_run_comment": "댓글",
+    "usage_run_comment_numbered": "댓글 {{n}}",
+    "usage_run_assignment": "할당",
+    "usage_runs_toggle_one": "실행 {{count}}회",
+    "usage_runs_toggle_other": "실행 {{count}}회"
   },
   "timeline": {
     "loading": "불러오는 중..."

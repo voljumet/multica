@@ -751,10 +751,54 @@ export function ViewRefreshIndicator({ active }: { active: boolean }) {
 // IssuesHeader
 // ---------------------------------------------------------------------------
 
+function ProjectScopeFilterButton({ scopedIssues }: { scopedIssues: Issue[] }) {
+  const { t } = useT("issues");
+  const projectFilters = useViewStore((s) => s.projectFilters);
+  const includeNoProject = useViewStore((s) => s.includeNoProject);
+  const act = useViewStoreApi().getState();
+  const counts = useIssueCounts(scopedIssues);
+  const active = projectFilters.length > 0 || includeNoProject;
+  const activeCount = projectFilters.length + (includeNoProject ? 1 : 0);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className={
+              active
+                ? "bg-accent text-accent-foreground hover:bg-accent/80"
+                : "text-muted-foreground"
+            }
+          >
+            {t(($) => $.filters.section_project)}
+            {active && (
+              <span className="ml-1 text-xs tabular-nums">{activeCount}</span>
+            )}
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="start" className="w-auto min-w-52 p-0">
+        <ProjectSubContent
+          counts={counts.project}
+          selected={projectFilters}
+          onToggle={act.toggleProjectFilter}
+          includeNoProject={includeNoProject}
+          onToggleNoProject={act.toggleNoProject}
+          noProjectCount={counts.noProject}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function IssuesHeader({
   scopedIssues,
   workingIssues,
   allowGantt = false,
+  showProjectFilter = true,
   dateFilter = null,
   onDateFilterChange,
   isRefreshing = false,
@@ -766,6 +810,8 @@ export function IssuesHeader({
    *  it counts the agents working on these rows. */
   workingIssues: Issue[] | undefined;
   allowGantt?: boolean;
+  /** Hide project filter on project detail pages (already scoped). */
+  showProjectFilter?: boolean;
   dateFilter?: IssueDateFilter | null;
   onDateFilterChange?: (filter: IssueDateFilter | null) => void;
   isRefreshing?: boolean;
@@ -822,31 +868,39 @@ export function IssuesHeader({
               <TooltipContent side="bottom">{t(($) => $.scope[SCOPE_DESC_KEY[s]])}</TooltipContent>
             </Tooltip>
           ))}
+          {showProjectFilter ? (
+            <ProjectScopeFilterButton scopedIssues={scopedIssues} />
+          ) : null}
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0 gap-1 text-muted-foreground md:hidden"
-              >
-                <span className="truncate">{scopeLabel}</span>
-                <ChevronDown className="size-3 text-muted-foreground" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start" className="w-auto">
-            <DropdownMenuRadioGroup value={scope} onValueChange={(value) => setScope(value as IssuesScope)}>
-              {SCOPE_VALUES.map((s) => (
-                <DropdownMenuRadioItem key={s} value={s}>
-                  {t(($) => $.scope[SCOPE_LABEL_KEY[s]])}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex shrink-0 items-center gap-1 md:hidden">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1 text-muted-foreground"
+                >
+                  <span className="truncate">{scopeLabel}</span>
+                  <ChevronDown className="size-3 text-muted-foreground" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start" className="w-auto">
+              <DropdownMenuRadioGroup value={scope} onValueChange={(value) => setScope(value as IssuesScope)}>
+                {SCOPE_VALUES.map((s) => (
+                  <DropdownMenuRadioItem key={s} value={s}>
+                    {t(($) => $.scope[SCOPE_LABEL_KEY[s]])}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {showProjectFilter ? (
+            <ProjectScopeFilterButton scopedIssues={scopedIssues} />
+          ) : null}
+        </div>
 
         <div className="flex shrink-0 items-center gap-1">
           {agentRunningFilter && (

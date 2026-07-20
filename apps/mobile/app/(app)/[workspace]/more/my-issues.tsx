@@ -1,18 +1,9 @@
 /**
- * "My Issues" tab. Three scopes — assigned / created / agents — mirroring
- * web's `packages/views/my-issues/components/my-issues-page.tsx:48-65`. The
- * `agents` scope label is "Agents and Squads" because the backend predicate
- * (`involves_user_id`, MUL-2397) surfaces both the user's owned agents and
- * squads they're involved in (member / leader / has an owned agent inside).
+ * "My Issues" push screen. Moved from (tabs)/my-issues.tsx; title comes
+ * from the workspace _layout.tsx Stack entry, no in-body header needed.
  *
- * Issues are grouped by status using SectionList in `BOARD_STATUSES` order;
- * empty status sections are filtered out so the screen doesn't fill with
- * "(0)" headers. Section grouping uses `BOARD_STATUSES` (cancelled excluded)
- * to match web — same source `packages/views/my-issues/components/my-issues-page.tsx:117-125`.
- *
- * Status + Priority filters mirror web's MyIssuesHeader filter sub-menus.
- * Filter state lives in `useMyIssuesViewStore` and is cleared on workspace
- * change via the shared `useClearFiltersOnWorkspaceChange` hook.
+ * Three scopes — assigned / created / agents — mirroring
+ * web's `packages/views/my-issues/components/my-issues-page.tsx:48-65`.
  */
 import { useMemo } from "react";
 import { Pressable, SectionList, View } from "react-native";
@@ -22,8 +13,6 @@ import { Ionicons } from "@expo/vector-icons";
 import type { Issue, IssuePriority, IssueStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
-import { Header } from "@/components/ui/header";
-import { HeaderActions } from "@/components/ui/app-header-actions";
 import { StatusIcon } from "@/components/ui/status-icon";
 import { IssueRow } from "@/components/issue/issue-row";
 import { IssuesLoading } from "@/components/issue/issues-loading";
@@ -45,12 +34,6 @@ import { filterIssues } from "@/lib/filter-issues";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 
-// Mobile pill row has tight width on SE3 (375pt). Three pills + Filter icon
-// must fit in 343pt usable space, so the agents scope renders "Agents" — the
-// full "Agents and Squads" label (~135pt) blows past safe limits and breaks
-// under Dynamic Type. Semantics unchanged: same backend predicate
-// (`involves_user_id`, MUL-2397) covers owned agents + related squads; the
-// empty state copy still says "agents or squads".
 const SCOPES: { value: MyIssuesScope; label: string }[] = [
   { value: "assigned", label: "Assigned" },
   { value: "created", label: "Created" },
@@ -59,7 +42,7 @@ const SCOPES: { value: MyIssuesScope; label: string }[] = [
 
 type IssueSection = { status: IssueStatus; data: Issue[] };
 
-export default function MyIssues() {
+export default function MyIssuesPage() {
   const userId = useAuthStore((s) => s.user?.id ?? null);
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
@@ -68,6 +51,7 @@ export default function MyIssues() {
   const setScope = useMyIssuesViewStore((s) => s.setScope);
   const statusFilters = useMyIssuesViewStore((s) => s.statusFilters);
   const priorityFilters = useMyIssuesViewStore((s) => s.priorityFilters);
+  const sortByLastEdited = useMyIssuesViewStore((s) => s.sortByLastEdited);
 
   const openFilter = () => {
     if (!wsSlug) return;
@@ -92,16 +76,17 @@ export default function MyIssues() {
     enabled: !!wsId && !!userId,
   });
 
-  // Apply client-side status + priority filter. Mirrors the predicate at
-  // packages/views/issues/utils/filter.ts:30-34 via filterIssues().
-  const filtered = useMemo(
-    () => filterIssues(data ?? [], statusFilters, priorityFilters),
-    [data, statusFilters, priorityFilters],
-  );
+  const filtered = useMemo(() => {
+    const f = filterIssues(data ?? [], {
+      statusFilters,
+      priorityFilters,
+      projectFilters: [],
+      includeNoProject: false,
+    });
+    if (!sortByLastEdited) return f;
+    return [...f].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  }, [data, statusFilters, priorityFilters, sortByLastEdited]);
 
-  // When statusFilters is non-empty, intersect visible status order with it
-  // so hidden statuses don't render an empty section header. Uses
-  // BOARD_STATUSES (cancelled excluded) to match web.
   const sections = useMemo<IssueSection[]>(() => {
     if (filtered.length === 0) return [];
     const byStatus = new Map<IssueStatus, Issue[]>();
@@ -119,14 +104,12 @@ export default function MyIssues() {
   }, [filtered, statusFilters]);
 
   const hasActiveFilters =
-    statusFilters.length > 0 || priorityFilters.length > 0;
+    statusFilters.length > 0 || priorityFilters.length > 0 || sortByLastEdited;
 
-  const showEmptyState =
-    !isLoading && !error && filtered.length === 0;
+  const showEmptyState = !isLoading && !error && filtered.length === 0;
 
   return (
     <View className="flex-1 bg-background">
-      <Header title="My Issues" right={<HeaderActions />} />
       <ScopeToolbar
         scopes={SCOPES}
         scope={scope}
@@ -193,19 +176,10 @@ export default function MyIssues() {
           onRefresh={refetch}
         />
       )}
-
     </View>
   );
 }
 
-/**
- * Outline icon button matching the pill height so the toolbar row reads as
- * one visual group. Mirrors web `IssuesHeader` / `MyIssuesHeader` filter
- * trigger (`packages/views/my-issues/components/my-issues-header.tsx:174`),
- * which is also `variant="outline"` + icon-sized — NOT the ghost-style we'd
- * get from <IconButton>. Square (`w-9`) with `px-0` to suppress the sm
- * default `px-3`.
- */
 function FilterButton({
   onPress,
   hasActiveFilters,
@@ -239,14 +213,6 @@ function FilterButton({
   );
 }
 
-/**
- * Toolbar row mirroring web `MyIssuesHeader` / `IssuesHeader`
- * (`packages/views/my-issues/components/my-issues-header.tsx:138-163`):
- * left-aligned scope pill group + right-side Filter icon (red dot when
- * filters are active). Replaces the previous full-width segmented tabs +
- * Filter-in-title-bar split — keeps scope and the filter affordance in the
- * same row, because they both control the list directly below.
- */
 function ScopeToolbar<S extends string>({
   scopes,
   scope,
@@ -370,4 +336,3 @@ function emptyMessageForScope(scope: MyIssuesScope): string {
       return "No issues assigned to your agents or squads yet.";
   }
 }
-

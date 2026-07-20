@@ -41,6 +41,7 @@ import type {
   Workspace,
   WorkspaceRepo,
   MemberWithUser,
+  KnownUser,
   User,
   Skill,
   SkillSummary,
@@ -263,6 +264,8 @@ import {
   EMPTY_LABEL,
   EMPTY_LIST_LABELS_RESPONSE,
   EMPTY_RESOURCE_LABELS_RESPONSE,
+  IssueUsageSummarySchema,
+  EMPTY_ISSUE_USAGE,
 } from "./schemas";
 
 /** Identifies the calling client to the server.
@@ -1084,6 +1087,16 @@ export class ApiClient {
     return this.fetch(`/api/agents/${id}/cancel-tasks`, { method: "POST" });
   }
 
+  async copyAgent(
+    id: string,
+    data: { target_workspace_slug: string; name?: string; target_runtime_id?: string },
+  ): Promise<Agent> {
+    return this.fetch(`/api/agents/${id}/copy`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   async listRuntimes(params?: { workspace_id?: string; owner?: "me" }): Promise<AgentRuntime[]> {
     const search = new URLSearchParams();
     if (params?.workspace_id) search.set("workspace_id", params.workspace_id);
@@ -1610,7 +1623,10 @@ export class ApiClient {
   }
 
   async getIssueUsage(issueId: string): Promise<IssueUsageSummary> {
-    return this.fetch(`/api/issues/${issueId}/usage`);
+    const raw = await this.fetch<unknown>(`/api/issues/${issueId}/usage`);
+    return parseWithFallback(raw, IssueUsageSummarySchema, EMPTY_ISSUE_USAGE, {
+      endpoint: "GET /api/issues/:id/usage",
+    });
   }
 
   async cancelTask(issueId: string, taskId: string): Promise<AgentTask> {
@@ -1739,11 +1755,25 @@ export class ApiClient {
     return this.fetch(`/api/workspaces/${id}`);
   }
 
-  async createWorkspace(data: { name: string; slug: string; description?: string; context?: string }): Promise<Workspace> {
+  async createWorkspace(data: {
+    name: string;
+    slug: string;
+    description?: string;
+    context?: string;
+    member_user_ids?: string[];
+  }): Promise<Workspace> {
     return this.fetch("/api/workspaces", {
       method: "POST",
       body: JSON.stringify(data),
     });
+  }
+
+  async listKnownUsers(): Promise<KnownUser[]> {
+    return this.fetch("/api/known-users");
+  }
+
+  async listAddableUsers(workspaceId: string): Promise<KnownUser[]> {
+    return this.fetch(`/api/workspaces/${workspaceId}/addable-users`);
   }
 
   async updateWorkspace(id: string, data: { name?: string; description?: string; context?: string; settings?: Record<string, unknown>; repos?: WorkspaceRepo[]; issue_prefix?: string; avatar_url?: string }): Promise<Workspace> {
@@ -1758,7 +1788,7 @@ export class ApiClient {
     return this.fetch(`/api/workspaces/${workspaceId}/members`);
   }
 
-  async createMember(workspaceId: string, data: CreateMemberRequest): Promise<Invitation> {
+  async createMember(workspaceId: string, data: CreateMemberRequest): Promise<MemberWithUser> {
     return this.fetch(`/api/workspaces/${workspaceId}/members`, {
       method: "POST",
       body: JSON.stringify(data),

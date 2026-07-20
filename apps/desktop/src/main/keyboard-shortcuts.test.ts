@@ -27,22 +27,31 @@ function key(
   };
 }
 
-describe("handleAppShortcut — reload blocking", () => {
-  it("swallows Cmd+R on macOS", () => {
+describe("handleAppShortcut — reload", () => {
+  it('returns "reload" on Cmd+R (macOS)', () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("r", { meta: true }), wc, "darwin")).toBe(true);
-    expect(wc.setZoomLevel).not.toHaveBeenCalled();
+    expect(handleAppShortcut(key("r", { meta: true }), wc, "darwin")).toBe("reload");
   });
 
-  it("swallows Ctrl+R on Linux/Windows", () => {
+  it('returns "reload" on Ctrl+R (Linux/Windows)', () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("r", { control: true }), wc, "linux")).toBe(true);
-    expect(handleAppShortcut(key("R", { control: true }), wc, "win32")).toBe(true);
+    expect(handleAppShortcut(key("r", { control: true }), wc, "linux")).toBe("reload");
+    expect(handleAppShortcut(key("R", { control: true }), wc, "win32")).toBe("reload");
   });
 
-  it("swallows F5 regardless of modifier", () => {
+  it('returns "force-reload" on Cmd+Shift+R (macOS)', () => {
     const wc = makeWc();
-    expect(handleAppShortcut(key("F5"), wc, "darwin")).toBe(true);
+    expect(handleAppShortcut(key("r", { meta: true, shift: true }), wc, "darwin")).toBe("force-reload");
+  });
+
+  it('returns "force-reload" on Ctrl+Shift+R (Linux/Windows)', () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key("r", { control: true, shift: true }), wc, "linux")).toBe("force-reload");
+  });
+
+  it("passes F5 through (no modifier)", () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key("F5"), wc, "darwin")).toBe(false);
   });
 
   it("ignores non-keyDown events", () => {
@@ -50,6 +59,24 @@ describe("handleAppShortcut — reload blocking", () => {
     expect(
       handleAppShortcut({ ...key("r", { meta: true }), type: "keyUp" }, wc, "darwin"),
     ).toBe(false);
+  });
+});
+
+describe("handleAppShortcut — open settings (Cmd/Ctrl+,)", () => {
+  it('returns "open-settings" on Cmd+, (macOS)', () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key(",", { meta: true }), wc, "darwin")).toBe("open-settings");
+  });
+
+  it('returns "open-settings" on Ctrl+, (Linux/Windows)', () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key(",", { control: true }), wc, "linux")).toBe("open-settings");
+    expect(handleAppShortcut(key(",", { control: true }), wc, "win32")).toBe("open-settings");
+  });
+
+  it("does not trigger without Cmd/Ctrl modifier", () => {
+    const wc = makeWc();
+    expect(handleAppShortcut(key(","), wc, "darwin")).toBe(false);
   });
 });
 

@@ -204,6 +204,14 @@ function DesktopInboxBridge() {
     });
   }, []);
 
+  useEffect(() => {
+    return window.desktopAPI.onOpenSettings(() => {
+      const slug = getCurrentSlug();
+      if (!slug) return;
+      pushRef.current(paths.workspace(slug).settings());
+    });
+  }, []);
+
   return null;
 }
 
