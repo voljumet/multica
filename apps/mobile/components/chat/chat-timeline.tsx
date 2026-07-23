@@ -1,19 +1,15 @@
 /**
  * Per-task execution trace — what the agent is/was thinking and which tools
- * it called. Rendered:
+ * it called. Two consumers:
  *
- *   - Live (under the StatusPill while a task is in flight), AND
- *   - Persisted (under the assistant bubble once the message has landed)
- *
- * Process steps (thinking / tool_use / tool_result / error) collapse
- * behind a single "N steps" toggle. Final text is NOT rendered here —
- * the parent renders the assistant message's `content` (or the latest
- * streaming text) as its own markdown block.
+ *   - Chat (default): process steps only (thinking / tool_use / tool_result
+ *     / error) collapse behind a single "N steps" toggle. Final text is
+ *     NOT rendered here — the parent renders the assistant message's
+ *     `content` (or the latest streaming text) as its own markdown block.
+ *   - Issue Agent Runs transcript (`variant="full"`): every message type
+ *     including agent text, always expanded — the full execution log.
  *
  * Folds use RNR `Collapsible` (built on `@rn-primitives/collapsible`).
- * The earlier version of this file hand-rolled four separate
- * `useState + Pressable + chevron` triggers (~60 lines of state +
- * handlers); Collapsible owns open/close + a11y semantics in one place.
  *
  * `defaultOpen` is true on the outer fold while streaming so the user
  * sees activity; the persisted instance below an assistant bubble
@@ -35,32 +31,50 @@ interface Props {
   /** Whether the owning task is still running. Drives the default-open
    *  state and the dot-pulse next to the trigger. */
   isStreaming?: boolean;
+  /**
+   * `process` (default) — chat fold: hide agent text, wrap in collapsible.
+   * `full` — issue transcript: include text rows, always expanded list.
+   */
+  variant?: "process" | "full";
 }
 
-export function ChatTimeline({ items, isStreaming = false }: Props) {
-  const processSteps = items.filter((i) => i.type !== "text");
-  if (processSteps.length === 0) return null;
+export function ChatTimeline({
+  items,
+  isStreaming = false,
+  variant = "process",
+}: Props) {
+  const rows =
+    variant === "full" ? items : items.filter((i) => i.type !== "text");
+  if (rows.length === 0) return null;
+
+  if (variant === "full") {
+    return (
+      <View className="rounded-lg border border-border bg-muted/20 px-2 py-1.5 gap-0.5">
+        {rows.map((item) => (
+          <StepRow key={`${item.task_id}-${item.seq}`} item={item} />
+        ))}
+      </View>
+    );
+  }
 
   return (
     <Collapsible defaultOpen={isStreaming}>
       <CollapsibleTrigger asChild>
         <View
           accessibilityRole="button"
-          accessibilityLabel={`${processSteps.length} step${processSteps.length === 1 ? "" : "s"}`}
+          accessibilityLabel={`${rows.length} step${rows.length === 1 ? "" : "s"}`}
           className="flex-row items-center gap-1 active:opacity-70"
         >
           <Ionicons name="chevron-forward" size={12} color="#71717a" />
           {isStreaming ? <StreamingDot /> : null}
           <Text className="text-xs text-muted-foreground">
-            {processSteps.length === 1
-              ? "1 step"
-              : `${processSteps.length} steps`}
+            {rows.length === 1 ? "1 step" : `${rows.length} steps`}
           </Text>
         </View>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <View className="mt-1 rounded-lg border border-border bg-muted/20 px-2 py-1.5 gap-0.5">
-          {processSteps.map((item) => (
+          {rows.map((item) => (
             <StepRow key={`${item.task_id}-${item.seq}`} item={item} />
           ))}
         </View>
@@ -78,6 +92,8 @@ function StreamingDot() {
 
 function StepRow({ item }: { item: TaskMessagePayload }) {
   switch (item.type) {
+    case "text":
+      return <TextRow item={item} />;
     case "thinking":
       return <ThinkingRow item={item} />;
     case "tool_use":
@@ -89,6 +105,49 @@ function StepRow({ item }: { item: TaskMessagePayload }) {
     default:
       return null;
   }
+}
+
+function TextRow({ item }: { item: TaskMessagePayload }) {
+  const text = item.content ?? "";
+  if (!text) return null;
+  const preview = text.length > 100 ? `${text.slice(0, 100)}…` : text;
+  const needsExpand = text.length > 100;
+  if (!needsExpand) {
+    return (
+      <View className="py-0.5 flex-row items-start gap-1.5">
+        <Ionicons
+          name="chatbubble-outline"
+          size={12}
+          color="#71717a"
+          style={{ marginTop: 2 }}
+        />
+        <Text className="flex-1 text-xs text-foreground">{text}</Text>
+      </View>
+    );
+  }
+  return (
+    <Collapsible>
+      <CollapsibleTrigger asChild>
+        <View className="py-0.5 flex-row items-start gap-1.5 active:opacity-70">
+          <Ionicons
+            name="chevron-forward"
+            size={12}
+            color="#71717a"
+            style={{ marginTop: 2 }}
+          />
+          <Text
+            className="flex-1 text-xs text-foreground"
+            numberOfLines={1}
+          >
+            {preview}
+          </Text>
+        </View>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <Text className="ml-4 mt-0.5 text-xs text-foreground">{text}</Text>
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 function ThinkingRow({ item }: { item: TaskMessagePayload }) {

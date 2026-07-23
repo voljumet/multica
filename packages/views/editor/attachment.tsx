@@ -29,6 +29,7 @@ import {
   Maximize2,
   Trash2,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -313,8 +314,8 @@ function hasExpiringSignatureQuery(q: URLSearchParams): boolean {
 // signature from the query cache.
 const RESIGN_STALE_MS = 20 * 60 * 1000;
 
-// useResignedInlineMediaURL upgrades an auth-gated media URL to a freshly
-// signed one for clients that cannot load `/api/attachments/<id>/download`
+// useResignedInlineMediaURL upgrades an auth-gated (or short-lived signed)
+// media URL for clients that cannot load `/api/attachments/<id>/download`
 // natively.
 //
 // The picked inline URL can end up being the stable per-attachment API
@@ -327,24 +328,32 @@ const RESIGN_STALE_MS = 20 * 60 * 1000;
 // the ones with a non-empty `api.getBaseUrl()` (no same-origin /api proxy),
 // which is the existing platform signal `absolutizeMediaURL` keys off.
 //
-// For them, fetch fresh attachment metadata through the authenticated API —
-// the same re-sign the click-time download path already does — and swap in
-// the response's signed `download_url`. When the server has no signed URL to
-// offer (non-CloudFront deployments return the API path again), keep the
-// original URL rather than looping.
+// Strategy:
+//   1. Re-fetch attachment metadata through the authenticated API and swap
+//      in a freshly signed `download_url` when CloudFront / S3 presign is
+//      configured (absolute URL that is not the API download shape).
+//   2. Also re-sign when the picked URL already carries an expiring
+//      signature query — listAttachments may hand us a still-cached signed
+//      URL past its TTL; refreshing avoids a silent 403 after 30 min.
+//   3. When the server has no signed URL to offer (non-CloudFront proxy
+//      mode returns the API path again), materialize the bytes via an
+//      authenticated download into a blob: object URL so <img> can still
+//      load. Callers never persist the blob URL; we revoke on unmount.
 function useResignedInlineMediaURL(
   attachmentId: string | undefined,
   pickedUrl: string,
 ): string {
   const idFromPickedUrl = attachmentIdFromDownloadURL(pickedUrl);
   const resignAttachmentId = attachmentId ?? idFromPickedUrl;
+  const isTokenMode = (api.getBaseUrl?.() ?? "") !== "";
+  const pickedHasExpiringSig = mediaURLHasExpiringSignature(pickedUrl);
   const needsResign =
+    isTokenMode &&
     !!resignAttachmentId &&
     !!pickedUrl &&
-    idFromPickedUrl !== undefined &&
-    (api.getBaseUrl?.() ?? "") !== "";
+    (idFromPickedUrl !== undefined || pickedHasExpiringSig);
 
-  const { data: fresh } = useQuery({
+  const { data: fresh, isFetched: resignFetched } = useQuery({
     queryKey: ["attachment-inline-resign", resignAttachmentId],
     queryFn: () => api.getAttachment(resignAttachmentId as string),
     enabled: needsResign,
@@ -352,16 +361,72 @@ function useResignedInlineMediaURL(
     gcTime: RESIGN_STALE_MS,
   });
 
-  if (!needsResign) return pickedUrl;
-  const dl = fresh?.download_url ?? "";
-  // Accept the fresh URL only when it is an actual upgrade — absolute and no
-  // longer the auth-gated API shape (i.e. a signed storage URL the renderer
-  // can load natively).
-  if (/^https?:\/\//i.test(dl) && attachmentIdFromDownloadURL(dl) === undefined) {
-    return dl;
+  let upgraded = pickedUrl;
+  if (needsResign) {
+    const dl = fresh?.download_url ?? "";
+    // Accept the fresh URL only when it is an actual upgrade — absolute and
+    // no longer the auth-gated API shape (i.e. a signed storage URL the
+    // renderer can load natively).
+    if (
+      /^https?:\/\//i.test(dl) &&
+      attachmentIdFromDownloadURL(dl) === undefined
+    ) {
+      upgraded = dl;
+    }
   }
-  return pickedUrl;
+
+  // Non-CloudFront / still-auth-gated after re-sign settled: materialize
+  // via authenticated fetch. Wait for the re-sign query so we don't race
+  // a blob download against a CloudFront signed URL that is about to land.
+  const stillAuthGated =
+    isTokenMode &&
+    !!resignAttachmentId &&
+    attachmentIdFromDownloadURL(upgraded) !== undefined &&
+    (!needsResign || resignFetched);
+
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!stillAuthGated || !resignAttachmentId) {
+      setBlobUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let created: string | null = null;
+    void api
+      .getAttachmentMediaObjectURL(resignAttachmentId)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        created = url;
+        setBlobUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setBlobUrl(null);
+      });
+    return () => {
+      cancelled = true;
+      if (created) URL.revokeObjectURL(created);
+      setBlobUrl(null);
+    };
+  }, [stillAuthGated, resignAttachmentId]);
+
+  if (stillAuthGated && blobUrl) return blobUrl;
+  return upgraded;
 }
+
+function mediaURLHasExpiringSignature(rawURL: string): boolean {
+  if (!rawURL || !/^https?:\/\//i.test(rawURL)) return false;
+  try {
+    return hasExpiringSignatureQuery(new URL(rawURL).searchParams);
+  } catch {
+    return SIGNED_QUERY_FALLBACK_RE.test(rawURL);
+  }
+}
+
+const SIGNED_QUERY_FALLBACK_RE =
+  /[?&](Signature|X-Amz-Signature|Key-Pair-Id|Expires|X-Amz-Expires)=/i;
 
 // ---------------------------------------------------------------------------
 // Dispatcher

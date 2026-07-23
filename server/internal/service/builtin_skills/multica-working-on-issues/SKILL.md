@@ -268,6 +268,28 @@ multica issue create --title "Step 2" --parent <issue-id> --assignee <agent> --s
 multica issue create --title "Step 3" --parent <issue-id> --assignee <agent> --stage 3 --status backlog
 ```
 
+## GitLab-linked issues: posting notes
+
+When working on an issue linked to a GitLab issue, you may post a note directly
+to GitLab (e.g. via `curl` or `glab`). Always append the Multica relay sentinel
+as the last line of the comment body:
+
+```
+<!-- multica:gitlab-relay -->
+```
+
+Example:
+
+```bash
+curl -s -X POST "$GITLAB_URL/api/v4/projects/$GL_PROJECT_ID/issues/$GL_ISSUE_IID/notes" \
+  -H "Authorization: Bearer $GITLAB_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"body\": \"Your comment here.\n\n<!-- multica:gitlab-relay -->\"}"
+```
+
+Without this marker, GitLab's Note Hook fires and Multica imports the comment as
+a new trigger, restarting the agent.
+
 ## References
 
 `references/working-on-issues-source-map.md` — accurate `file:line` for every

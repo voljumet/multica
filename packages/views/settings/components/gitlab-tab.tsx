@@ -19,6 +19,7 @@ import {
   useRotateGitLabWebhookSecret,
   deriveGitLabSettings,
   DEFAULT_GITLAB_ISSUE_SYNC_LABEL,
+  buildGitLabWebhookUrl,
 } from "@multica/core/gitlab";
 import { api } from "@multica/core/api";
 import type { Workspace } from "@multica/core/types";
@@ -150,8 +151,13 @@ export function GitLabTab() {
 
   if (!workspace) return null;
 
-  const webhookURL =
-    typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/gitlab/${wsId}` : "";
+  // Prefer api.getBaseUrl() so Electron (file:// origin) shows the real public
+  // API host, matching autopilot webhook URL resolution.
+  const webhookURL = buildGitLabWebhookUrl({
+    workspaceId: wsId,
+    apiBaseUrl: api.getBaseUrl(),
+    currentOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+  });
 
   return (
     <div className="space-y-8">

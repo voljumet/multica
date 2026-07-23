@@ -1,24 +1,30 @@
 /**
  * Block-level image with real aspect ratio + tap-to-lightbox.
  *
- *   - Aspect ratio detection uses RN's `Image.getSize` (cross-platform,
- *     network-friendly). While dimensions resolve we lay out at 16:9 as
- *     a placeholder — same width-100% so the surrounding flow is stable
- *     and only the height shifts once the real ratio lands.
+ *   - Aspect ratio detection uses RN's `Image.getSize` / `getSizeWithHeaders`
+ *     (cross-platform, network-friendly). While dimensions resolve we lay
+ *     out at 16:9 as a placeholder — same width-100% so the surrounding
+ *     flow is stable and only the height shifts once the real ratio lands.
  *   - Rendering uses `expo-image` for on-disk caching + smooth fade-in
  *     transition.
  *   - Tap dispatches into the global LightboxProvider for fullscreen
  *     viewing with pinch-zoom + swipe-down-to-dismiss.
  *
- * URI resolution: markdown content authored in Multica stores image
- * references using the internal `mc://file/<id>` scheme rather than
- * baking signed HTTPS URLs into the content (signed URLs expire). iOS
- * doesn't understand `mc://`, so we look the URI up in the supplied
- * `attachments` list and swap it for the matching `download_url` before
- * passing to any image API. Unmatched URIs fall through unchanged —
- * external https links and well-known schemes load directly; an
- * unknown reference fails the getSize callback and we fall back to a
- * 16:9 placeholder slot.
+ * URI resolution (MUL-3130 / MUL-3254 parity with web/desktop):
+ *
+ *   Markdown stores durable references (`markdown_url` or the stable
+ *   `/api/attachments/<id>/download` path), never short-lived signed CDN
+ *   URLs. We look the URI up in the surrounding `attachments` list, prefer
+ *   a freshly-signed absolute `download_url` when the list has one, and
+ *   re-sign via authenticated `getAttachment` when the picked URL is still
+ *   the auth-gated API endpoint. Token-mode native loaders (RN / iOS)
+ *   cannot attach Authorization to bare resource fetches, so without this
+ *   hop the image is a blank frame and the lightbox spins forever.
+ *
+ *   When re-sign still yields an API path (non-CloudFront deployments that
+ *   proxy the bytes), we pass the Bearer token as request headers on both
+ *   expo-image and the lightbox so the authenticated download endpoint
+ *   can stream the body.
  *
  * Cancellation: a content re-render that swaps the URI must not let the
  * previous getSize callback overwrite state — guard with a `cancelled`
@@ -27,9 +33,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image as RNImage, Pressable, View } from "react-native";
 import { Image as ExpoImage } from "expo-image";
+import { useQuery } from "@tanstack/react-query";
 import type { Attachment } from "@multica/core/types";
-import { resolveAttachmentUrl } from "@/lib/attachment-url";
+import { api } from "@/data/api";
+import {
+  isSignedMediaURL,
+  resolveInlineMediaUrl,
+} from "@/lib/resolve-inline-media-url";
 import { useLightbox } from "./lightbox-provider";
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
+const RESIGN_STALE_MS = 20 * 60 * 1000;
 
 interface Props {
   uri: string;
@@ -41,49 +55,80 @@ export function MarkdownImage({ uri, attachments }: Props) {
   const { open } = useLightbox();
   const [aspect, setAspect] = useState<number | null>(null);
 
-  const resolvedUri = useMemo(() => {
-    // mc://file/<id> → look up the matching attachment's download_url.
-    // No match (external link, html https URL, or unresolved mc://) falls
-    // through to the original uri.
-    let candidate: string | null | undefined = uri;
-    if (attachments && attachments.length > 0) {
-      const match = attachments.find((a) => a.url === uri);
-      if (match?.download_url) candidate = match.download_url;
+  const base = useMemo(
+    () => resolveInlineMediaUrl(uri, attachments, API_URL),
+    [uri, attachments],
+  );
+
+  // Token-mode re-sign: when the resolved URI is still the auth-gated
+  // download endpoint, fetch fresh metadata so CloudFront / S3 deployments
+  // can hand us a signed absolute URL that loads without headers.
+  const { data: fresh } = useQuery({
+    queryKey: ["attachment-inline-resign", base.attachmentId],
+    queryFn: ({ signal }) =>
+      api.getAttachment(base.attachmentId as string, { signal }),
+    enabled: !!base.attachmentId && base.needsAuth,
+    staleTime: RESIGN_STALE_MS,
+    gcTime: RESIGN_STALE_MS,
+  });
+
+  const media = useMemo(() => {
+    const dl = fresh?.download_url ?? "";
+    if (isSignedMediaURL(dl)) {
+      return { uri: dl, headers: undefined as Record<string, string> | undefined };
     }
-    // The backend may return a server-relative `download_url` (e.g.
-    // `/api/attachments/{id}/download`) when no CloudFront signer is
-    // configured — see MUL-2976. RN's image loader has no document
-    // origin to resolve against, so prepend `EXPO_PUBLIC_API_URL` for
-    // server-relative paths and let absolute URLs / external links pass
-    // through unchanged.
-    return resolveAttachmentUrl(candidate) ?? uri;
-  }, [uri, attachments]);
+    // Still on the API download shape (or external). Attach Bearer when the
+    // endpoint needs auth so expo-image / lightbox can load proxy mode.
+    const headers =
+      base.needsAuth && !isSignedMediaURL(base.uri)
+        ? api.getAuthHeaders()
+        : undefined;
+    return {
+      uri: base.uri,
+      headers: headers && Object.keys(headers).length > 0 ? headers : undefined,
+    };
+  }, [base.needsAuth, base.uri, fresh?.download_url]);
 
   useEffect(() => {
     let cancelled = false;
-    RNImage.getSize(
-      resolvedUri,
-      (w, h) => {
-        if (cancelled || !w || !h) return;
-        setAspect(w / h);
-      },
-      () => {
-        // Network failure / decode failure / 404 / unknown URI scheme
-        // (e.g. unresolved mc://) — keep the 16:9 fallback so the slot
-        // still shows the muted background instead of collapsing.
-        if (!cancelled) setAspect(16 / 9);
-      },
-    );
+    const onSuccess = (w: number, h: number) => {
+      if (cancelled || !w || !h) return;
+      setAspect(w / h);
+    };
+    const onFail = () => {
+      // Network failure / decode failure / 404 / unknown URI scheme —
+      // keep the 16:9 fallback so the slot still shows the muted
+      // background instead of collapsing.
+      if (!cancelled) setAspect(16 / 9);
+    };
+
+    if (media.headers) {
+      RNImage.getSizeWithHeaders(media.uri, media.headers, onSuccess, onFail);
+    } else {
+      RNImage.getSize(media.uri, onSuccess, onFail);
+    }
     return () => {
       cancelled = true;
     };
-  }, [resolvedUri]);
+  }, [media.headers, media.uri]);
 
   return (
-    <Pressable onPress={() => open(resolvedUri)}>
+    <Pressable
+      onPress={() =>
+        open(
+          media.headers
+            ? { uri: media.uri, headers: media.headers }
+            : media.uri,
+        )
+      }
+    >
       <View className="rounded-lg overflow-hidden bg-muted">
         <ExpoImage
-          source={{ uri: resolvedUri }}
+          source={
+            media.headers
+              ? { uri: media.uri, headers: media.headers }
+              : { uri: media.uri }
+          }
           style={{ width: "100%", aspectRatio: aspect ?? 16 / 9 }}
           contentFit="contain"
           transition={150}

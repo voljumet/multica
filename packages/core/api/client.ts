@@ -2158,6 +2158,19 @@ export class ApiClient {
     });
   }
 
+  // Authenticated byte fetch for inline media on token-mode clients
+  // (Desktop / Electron). The unified download endpoint needs a Bearer
+  // token that a native <img> cannot attach; this follows CF / presign
+  // redirects (or streams proxy mode) and returns an object URL the
+  // renderer can use as <img src>. Caller must revoke the URL when done.
+  async getAttachmentMediaObjectURL(id: string): Promise<string> {
+    const res = await this.fetchRaw(
+      `/api/attachments/${encodeURIComponent(id)}/download`,
+    );
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  }
+
   async deleteAttachment(id: string): Promise<void> {
     await this.fetch(`/api/attachments/${id}`, { method: "DELETE" });
   }

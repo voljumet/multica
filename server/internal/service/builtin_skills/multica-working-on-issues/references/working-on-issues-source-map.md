@@ -170,6 +170,15 @@ wakes the parent assignee. Promoting the next stage's `backlog` sub-issues to
 | Per-type value validation (self-correcting errors) | `server/internal/handler/property.go` (`validatePropertyValue`) |
 | API routes (`/api/properties`, PUT/DELETE `/api/issues/{id}/properties/{propertyId}`) | `server/cmd/server/router.go` |
 
+## GitLab relay sentinel
+
+| Behavior | File:line |
+|---|---|
+| Sentinel constant `gitlabNoteRelaySentinel` | `server/internal/handler/gitlab.go:725` |
+| `AppendGitLabNoteRelaySentinel(body)` helper | `server/internal/handler/gitlab.go:730` |
+| Note Hook ingestion sentinel check (Path A) | `server/internal/handler/gitlab.go:411` |
+| Autopilot webhook sentinel check (Path B) | `server/internal/handler/autopilot_webhook.go` (`isGitLabRelayNote`) |
+
 ## Verification command
 
 Re-derive any line above before depending on it:
@@ -183,4 +192,5 @@ grep -n 'extractIdentifiers(\|extractClosingIdentifiers(\|derivePRState(' intern
 grep -n 'qualifyingIdents\|reference_only\|ReferenceOnly' internal/handler/github.go pkg/db/queries/github.sql
 grep -n 'prevIssue.Status == "backlog"\|func (h \*Handler) shouldEnqueueAgentTask' internal/handler/issue.go
 grep -n 'func notifyParentOfChildDone'       internal/handler/issue_child_done.go
+grep -n 'gitlabNoteRelaySentinel\|AppendGitLabNoteRelaySentinel\|isGitLabRelayNote' internal/handler/gitlab.go internal/handler/autopilot_webhook.go
 ```

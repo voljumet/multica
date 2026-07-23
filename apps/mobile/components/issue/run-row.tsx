@@ -3,19 +3,22 @@
  * (`app/(app)/[workspace]/issue/[id]/runs.tsx`). Same component for active
  * and past tasks —
  * the trailing Cancel button is conditional on `status in {queued,
- * dispatched, running}`, and the status badge / colour swaps based on the
- * AgentTask.status enum.
+ * dispatched, running, waiting_local_directory}`, and the status badge /
+ * colour swaps based on the AgentTask.status enum.
  *
- * Tapping a past row is a no-op in v1 — the transcript-detail screen is
- * explicitly out of scope per /Users/qingnaiyuan/.claude/plans/
- * ok-plan-linked-taco.md.
+ * Tapping the row opens the per-task transcript
+ * (`issue/[id]/runs/[taskId]`) — live while the task is active, historical
+ * once terminal. Cancel stays a separate control so a mis-tap on Stop
+ * doesn't open the log.
  */
 import { Alert, Pressable, View } from "react-native";
+import { router } from "expo-router";
 import type { AgentTask, TaskFailureReason } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
 import { useCancelTask } from "@/data/mutations/issues";
 import { useActorLookup } from "@/data/use-actor-name";
+import { useWorkspaceStore } from "@/data/workspace-store";
 import { timeAgo } from "@/lib/time-ago";
 
 interface Props {
@@ -26,11 +29,13 @@ interface Props {
 const ACTIVE_STATUSES: readonly AgentTask["status"][] = [
   "queued",
   "dispatched",
+  "waiting_local_directory",
   "running",
 ];
 
 export function RunRow({ task, issueId }: Props) {
   const { getName } = useActorLookup();
+  const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const isActive = ACTIVE_STATUSES.includes(task.status);
   const summary = task.trigger_summary?.trim() || fallbackSummary(task);
   // Past tasks use completed_at when present (server fills it for terminal
@@ -38,24 +43,42 @@ export function RunRow({ task, issueId }: Props) {
   // long it's been waiting.
   const timestamp = task.completed_at || task.created_at;
 
+  const openTranscript = () => {
+    if (!wsSlug) return;
+    router.push({
+      pathname: "/[workspace]/issue/[id]/runs/[taskId]",
+      params: {
+        workspace: wsSlug,
+        id: issueId,
+        taskId: task.id,
+      },
+    });
+  };
+
   return (
     <View className="flex-row items-start gap-3 py-2">
-      <ActorAvatar type="agent" id={task.agent_id} size={28} showPresence />
-      <View className="flex-1 gap-1">
-        <Text
-          className="text-sm text-foreground"
-          numberOfLines={2}
-        >
-          <Text className="font-medium">{getName("agent", task.agent_id)}</Text>
-          <Text className="text-muted-foreground"> · {summary}</Text>
-        </Text>
-        <View className="flex-row items-center gap-2">
-          <StatusBadge task={task} />
-          <Text className="text-xs text-muted-foreground">
-            {timestamp ? timeAgo(timestamp) : ""}
+      <Pressable
+        onPress={openTranscript}
+        className="flex-1 flex-row items-start gap-3 active:opacity-70"
+        accessibilityRole="button"
+        accessibilityLabel={`Open transcript for ${getName("agent", task.agent_id)}`}
+      >
+        <ActorAvatar type="agent" id={task.agent_id} size={28} showPresence />
+        <View className="flex-1 gap-1">
+          <Text className="text-sm text-foreground" numberOfLines={2}>
+            <Text className="font-medium">
+              {getName("agent", task.agent_id)}
+            </Text>
+            <Text className="text-muted-foreground"> · {summary}</Text>
           </Text>
+          <View className="flex-row items-center gap-2">
+            <StatusBadge task={task} />
+            <Text className="text-xs text-muted-foreground">
+              {timestamp ? timeAgo(timestamp) : ""}
+            </Text>
+          </View>
         </View>
-      </View>
+      </Pressable>
       {isActive ? <CancelButton taskId={task.id} issueId={issueId} /> : null}
     </View>
   );

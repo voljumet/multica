@@ -7,6 +7,7 @@ import type { Attachment as AttachmentRecord } from "@multica/core/types";
 const {
   getAttachmentTextContentMock,
   getAttachmentMock,
+  getAttachmentMediaObjectURLMock,
   getBaseUrlMock,
   downloadMock,
   openExternalMock,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   getAttachmentTextContentMock: vi.fn(),
   getAttachmentMock: vi.fn(),
+  getAttachmentMediaObjectURLMock: vi.fn(),
   // Default: empty base URL so existing tests render site-relative URLs
   // through the proxy (i.e. exactly the way the web app behaves). The
   // absolutize-specific suite below overrides this to simulate Desktop /
@@ -28,6 +30,7 @@ vi.mock("@multica/core/api", () => ({
   api: {
     getAttachmentTextContent: getAttachmentTextContentMock,
     getAttachment: getAttachmentMock,
+    getAttachmentMediaObjectURL: getAttachmentMediaObjectURLMock,
     getBaseUrl: getBaseUrlMock,
   },
   PreviewTooLargeError: class extends Error {},
@@ -430,12 +433,14 @@ describe("Attachment — image dispatch", () => {
     expect(getAttachmentMock).toHaveBeenCalledWith(id);
   });
 
-  it("keeps the picked URL when fresh metadata has no signed download_url (MUL-3254)", async () => {
+  it("materializes a blob: URL when fresh metadata has no signed download_url (non-CF token mode)", async () => {
     // Non-CloudFront deployments return the API path again as download_url —
-    // swapping to it gains nothing, so the original pick must stay.
+    // a native <img> cannot attach Bearer, so the renderer fetches the
+    // authenticated download endpoint into an object URL.
     getBaseUrlMock.mockReturnValue("https://multica-api.copilothub.ai");
     const id = "11111111-2222-3333-4444-555555555555";
     const markdownUrl = `https://multica-api.copilothub.ai/api/attachments/${id}/download`;
+    const blobUrl = "blob:https://app.local/media-1";
     const att = makeRecord({
       id,
       url: "https://cdn.example.test/uploads/ws/shot.png",
@@ -447,6 +452,7 @@ describe("Attachment — image dispatch", () => {
     getAttachmentMock.mockResolvedValue(
       makeRecord({ id, download_url: `/api/attachments/${id}/download` }),
     );
+    getAttachmentMediaObjectURLMock.mockResolvedValue(blobUrl);
 
     renderWithQuery(
       <Attachment
@@ -460,7 +466,48 @@ describe("Attachment — image dispatch", () => {
     );
 
     await waitFor(() => expect(getAttachmentMock).toHaveBeenCalledWith(id));
-    expect(document.querySelector("img")?.getAttribute("src")).toBe(markdownUrl);
+    await waitFor(() =>
+      expect(getAttachmentMediaObjectURLMock).toHaveBeenCalledWith(id),
+    );
+    await waitFor(() =>
+      expect(document.querySelector("img")?.getAttribute("src")).toBe(blobUrl),
+    );
+  });
+
+  it("re-signs an already-signed picked URL so a stale listAttachments TTL does not 403", async () => {
+    getBaseUrlMock.mockReturnValue("https://multica-api.copilothub.ai");
+    configStore.setState({ cdnDomain: "cdn.example.test", cdnSigned: true });
+    const id = "11111111-2222-3333-4444-555555555555";
+    const stale =
+      "https://cdn.example.test/uploads/ws/shot.png?Signature=stale&Key-Pair-Id=K";
+    const fresh =
+      "https://cdn.example.test/uploads/ws/shot.png?Signature=fresh&Key-Pair-Id=K";
+    const att = makeRecord({
+      id,
+      url: "https://cdn.example.test/uploads/ws/shot.png",
+      markdown_url: `https://multica-api.copilothub.ai/api/attachments/${id}/download`,
+      download_url: stale,
+    });
+    resolverState.attachments = [att];
+    getAttachmentMock.mockResolvedValue(makeRecord({ id, download_url: fresh }));
+
+    renderWithQuery(
+      <Attachment
+        attachment={{
+          kind: "url",
+          url: att.markdown_url,
+          filename: "shot.png",
+          forceKind: "image",
+        }}
+      />,
+    );
+
+    // First paint uses the list-cached signed URL; re-sign then swaps in a
+    // fresh signature before the 30-min TTL can 403 the <img>.
+    await waitFor(() => expect(getAttachmentMock).toHaveBeenCalledWith(id));
+    await waitFor(() =>
+      expect(document.querySelector("img")?.getAttribute("src")).toBe(fresh),
+    );
   });
 
   it("forceKind=image renders as image even when filename is empty (markdown ![](url) regression)", () => {

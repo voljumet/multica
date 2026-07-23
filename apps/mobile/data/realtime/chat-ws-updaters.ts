@@ -11,13 +11,14 @@
  *     are compared structurally so it'd *appear* to work, but binding cache
  *     mutation to a foreign key factory invites silent drift the moment
  *     either side adjusts its key shape.
- *   - Mobile has a smaller cache surface (no taskMessages live timeline in
- *     v1, no per-user pending-tasks aggregate).
+ *   - Mobile owns its own key factories; issue runs + chat both write the
+ *     shared `["task-messages", taskId]` cache via `appendTaskMessage`.
  *
  * Cache shapes (the design contract):
  *   - chatKeys.sessions(wsId)       → ChatSession[]
  *   - chatKeys.messages(sessionId)  → ChatMessage[]   (flat, ASC oldest→newest)
  *   - chatKeys.pendingTask(sessionId)→ ChatPendingTask (empty `{}` = no in-flight)
+ *   - chatKeys.taskMessages(taskId) → TaskMessagePayload[] (issue + chat)
  */
 import type { QueryClient } from "@tanstack/react-query";
 import type {
@@ -30,7 +31,7 @@ import type {
   TaskQueuedPayload,
   TaskDispatchPayload,
 } from "@multica/core/types";
-import { chatKeys } from "@/data/queries/chat";
+import { chatKeys, mergeTaskMessagesBySeq } from "@/data/queries/chat";
 
 // =====================================================
 // Sessions list (ChatSession[] keyed by wsId)
@@ -200,13 +201,14 @@ export function clearPendingTask(
  * - Sorts by `seq` ASC after insert so reordered late-arriving rows still
  *   render in execution order.
  * - Creates the cache entry on first event (empty default), so the timeline
- *   is visible even before the user opens the assistant bubble that drives
- *   the lazy fetch.
+ *   is visible even before the user opens the assistant bubble / transcript
+ *   that drives the lazy fetch.
  *
- * Mirrors `packages/core/realtime/use-realtime-sync.ts` ~675-689 (web's
- * single global handler). Mobile attaches per-session via
- * `use-chat-session-realtime` instead — see the WS strategy note in
- * `apps/mobile/CLAUDE.md` for why mobile prefers per-record mounts.
+ * Mirrors web's global `task:message` handler in useRealtimeSync. Mobile
+ * attaches it from both `use-chat-session-realtime` (chat-scoped) and
+ * `use-issue-realtime` (issue-scoped) — each gates on its own id field so
+ * the two mounts never double-apply different filters to the same cache
+ * write (both end up calling this merge, which is idempotent on seq).
  */
 export function appendTaskMessage(
   qc: QueryClient,
@@ -214,9 +216,6 @@ export function appendTaskMessage(
 ) {
   qc.setQueryData<TaskMessagePayload[]>(
     chatKeys.taskMessages(payload.task_id),
-    (old = []) => {
-      if (old.some((m) => m.seq === payload.seq)) return old;
-      return [...old, payload].sort((a, b) => a.seq - b.seq);
-    },
+    (old = []) => mergeTaskMessagesBySeq(old, [payload]),
   );
 }
