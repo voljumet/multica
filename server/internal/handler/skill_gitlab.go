@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +12,9 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	skillpkg "github.com/multica-ai/multica/server/internal/skill"
 )
 
@@ -116,6 +120,27 @@ func parseGitLabURL(raw string) (gitlabSpec, error) {
 // /api/v4/projects/{encoded_namespace}/...
 func gitlabProjectAPIPath(namespace string) string {
 	return url.PathEscape(namespace)
+}
+
+// gitlabAccessTokenForWorkspace retrieves and decrypts the workspace's GitLab
+// OAuth access token, refreshing it first if it has expired.
+func (h *Handler) gitlabAccessTokenForWorkspace(ctx context.Context, workspaceUUID pgtype.UUID) (string, error) {
+	conn, err := h.Queries.GetFirstGitLabConnectionByWorkspace(ctx, workspaceUUID)
+	if err != nil {
+		return "", fmt.Errorf("gitlab skill: no GitLab connection for workspace: %w", err)
+	}
+	if conn.TokenExpiresAt.Valid && conn.TokenExpiresAt.Time.Before(time.Now()) {
+		return h.refreshGitLabToken(ctx, conn)
+	}
+	tokenBytes, err := base64.StdEncoding.DecodeString(conn.AccessToken)
+	if err != nil {
+		return "", fmt.Errorf("gitlab skill: decode token: %w", err)
+	}
+	plain, err := h.GitLabBox.Open(tokenBytes)
+	if err != nil {
+		return "", fmt.Errorf("gitlab skill: decrypt token: %w", err)
+	}
+	return string(plain), nil
 }
 
 // fetchFromGitLab fetches a skill from a self-hosted GitLab repo using the
