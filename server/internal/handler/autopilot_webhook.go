@@ -559,6 +559,20 @@ func (h *Handler) HandleAutopilotWebhook(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// 10b. GitLab relay sentinel: skip notes Multica-controlled agent code
+	//      posted to GitLab. Without this check the Note Hook would re-trigger
+	//      the autopilot that originated the note, creating an infinite loop.
+	if isGitLabRelayNote(envelope) {
+		respBody := map[string]any{
+			"status":      "ignored",
+			"delivery_id": uuidToString(delivery.ID),
+			"reason":      "gitlab_relay_sentinel",
+		}
+		h.finaliseDeliveryTerminal(r, delivery.ID, deliveryStatusIgnored, http.StatusOK, respBody, "gitlab_relay_sentinel")
+		writeJSON(w, http.StatusOK, respBody)
+		return
+	}
+
 	// 11. Allocate the idempotent run synchronously so existing webhook clients
 	//     keep the v0.4.0 response contract. The queued delivery remains the
 	//     durable dispatch source: the worker resumes this run after the response
@@ -737,6 +751,24 @@ func isKnownProvider(prefix string) bool {
 		return true
 	}
 	return false
+}
+
+// isGitLabRelayNote reports whether the envelope is a GitLab Note Hook whose
+// body contains the Multica relay sentinel. Notes posted by agents include this
+// marker so the autopilot is not re-triggered by its own output.
+func isGitLabRelayNote(env WebhookEnvelope) bool {
+	if !strings.HasSuffix(env.Event, "Note Hook") {
+		return false
+	}
+	var p struct {
+		ObjectAttributes struct {
+			Note string `json:"note"`
+		} `json:"object_attributes"`
+	}
+	if err := json.Unmarshal(env.EventPayload, &p); err != nil {
+		return false
+	}
+	return strings.Contains(p.ObjectAttributes.Note, gitlabNoteRelaySentinel)
 }
 
 // webhookActionCandidates extracts possible action values from the event

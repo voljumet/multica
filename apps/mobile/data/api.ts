@@ -78,6 +78,7 @@ import {
   EMPTY_ACTIVE_TASKS_RESPONSE,
   EMPTY_AGENT_LIST,
   EMPTY_AGENT_TASK_LIST,
+  EMPTY_ATTACHMENT,
   EMPTY_ATTACHMENT_LIST,
   EMPTY_CHAT_MESSAGE_LIST,
   EMPTY_CHAT_PENDING_TASK,
@@ -183,6 +184,17 @@ class ApiClient {
 
   setToken(token: string | null) {
     this.token = token;
+  }
+
+  /**
+   * Auth headers for native resource loads (expo-image, Image.getSize,
+   * react-native-image-viewing) that cannot go through `this.fetch`. Only
+   * returns Authorization when a Bearer token is set — empty object
+   * otherwise so callers can spread unconditionally.
+   */
+  getAuthHeaders(): Record<string, string> {
+    if (!this.token) return {};
+    return { Authorization: `Bearer ${this.token}` };
   }
 
   setOptions(options: ApiClientOptions) {
@@ -652,6 +664,22 @@ class ApiClient {
       AttachmentListSchema,
       EMPTY_ATTACHMENT_LIST,
       { ...opts, endpoint: "GET /api/issues/:id/attachments" },
+    );
+  }
+
+  // GET /api/attachments/:id — fresh metadata with a re-signed download_url
+  // (CloudFront / S3 TTL is ~30 min). Used by MarkdownImage on token-mode
+  // clients so native <Image> can load a signed CDN URL without attaching
+  // Authorization (MUL-3254 parity with web/desktop).
+  async getAttachment(
+    id: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<Attachment> {
+    return this.fetchValidated(
+      `/api/attachments/${id}`,
+      AttachmentSchema,
+      EMPTY_ATTACHMENT,
+      { ...opts, endpoint: "GET /api/attachments/:id" },
     );
   }
 

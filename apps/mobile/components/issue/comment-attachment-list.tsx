@@ -62,10 +62,20 @@ export function CommentAttachmentList({ attachments, content }: Props) {
       {standalone.map((attachment) => {
         const isImage = attachment.content_type.startsWith("image/");
         if (isImage) {
+          // Prefer the durable markdown_url (what web/CLI persist into
+          // bodies) so MarkdownImage's resolver matches by id / download
+          // path. Falling back through download_url → url covers older
+          // records that omit markdown_url. Passing raw storage `url` alone
+          // used to miss the resolver match and leave iOS on a private CDN
+          // path with no signed query.
+          const uri =
+            attachment.markdown_url ||
+            attachment.download_url ||
+            attachment.url;
           return (
             <MarkdownImage
               key={attachment.id}
-              uri={attachment.url}
+              uri={uri}
               alt={attachment.filename}
               attachments={attachments}
             />

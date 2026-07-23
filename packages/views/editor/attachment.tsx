@@ -14,9 +14,9 @@
  * Call sites:
  *   - extensions/file-card.tsx FileCardView (Tiptap NodeView)
  *   - extensions/image-view.tsx ImageView (Tiptap NodeView)
- *   - rich-content/rich-content.tsx (markdown img + fileCard div renderers,
- *     serving Chat, Issue descriptions and Comments through one renderer)
+ *   - readonly-content.tsx (markdown img + fileCard div renderers)
  *   - issues/components/comment-card.tsx AttachmentList (standalone fallback)
+ *   - common/markdown.tsx (chat / skill viewer Markdown wrapper)
  *
  * The component owns its own preview modal and download dispatcher — callers
  * just pass `attachment` and (for editor surfaces) optional editor chrome
@@ -29,20 +29,18 @@ import {
   Maximize2,
   Trash2,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
 import { useConfigStore } from "@multica/core/config";
 import type { Attachment as AttachmentRecord } from "@multica/core/types";
+import { attachmentIdFromDownloadURL } from "@multica/core/types/attachment-url";
 import { useT } from "../i18n";
 import { useAttachmentDownloadResolver } from "./attachment-download-context";
 import { useAttachmentPreview } from "./attachment-preview-modal";
-import { useImageSequencePreview } from "./image-sequence-context";
-import {
-  isObjectURL,
-  useResignedInlineMediaURL,
-} from "./hooks/use-inline-media-url";
 import { useDownloadAttachment } from "./use-download-attachment";
 import { AttachmentCard } from "./attachment-card";
 import { HtmlAttachmentPreview } from "./html-attachment-preview";
@@ -308,6 +306,129 @@ function hasExpiringSignatureQuery(q: URLSearchParams): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Inline media re-sign (MUL-3254)
+// ---------------------------------------------------------------------------
+
+// Keep refetches well inside the server's signed-URL TTL (30 min default,
+// server/internal/handler/file.go) so a re-render never serves an expired
+// signature from the query cache.
+const RESIGN_STALE_MS = 20 * 60 * 1000;
+
+// useResignedInlineMediaURL upgrades an auth-gated (or short-lived signed)
+// media URL for clients that cannot load `/api/attachments/<id>/download`
+// natively.
+//
+// The picked inline URL can end up being the stable per-attachment API
+// endpoint (e.g. a reopened issue draft, whose persisted record deliberately
+// strips the short-lived signed `download_url`). That endpoint needs
+// credentials: web loads it because the session cookie rides on the <img>
+// request (same-site), but Desktop's file:// renderer and the mobile webview
+// are cross-site — no cookie is attached and the Bearer token cannot be put
+// on a native resource fetch, so the image 401s. Those clients are exactly
+// the ones with a non-empty `api.getBaseUrl()` (no same-origin /api proxy),
+// which is the existing platform signal `absolutizeMediaURL` keys off.
+//
+// Strategy:
+//   1. Re-fetch attachment metadata through the authenticated API and swap
+//      in a freshly signed `download_url` when CloudFront / S3 presign is
+//      configured (absolute URL that is not the API download shape).
+//   2. Also re-sign when the picked URL already carries an expiring
+//      signature query — listAttachments may hand us a still-cached signed
+//      URL past its TTL; refreshing avoids a silent 403 after 30 min.
+//   3. When the server has no signed URL to offer (non-CloudFront proxy
+//      mode returns the API path again), materialize the bytes via an
+//      authenticated download into a blob: object URL so <img> can still
+//      load. Callers never persist the blob URL; we revoke on unmount.
+function useResignedInlineMediaURL(
+  attachmentId: string | undefined,
+  pickedUrl: string,
+): string {
+  const idFromPickedUrl = attachmentIdFromDownloadURL(pickedUrl);
+  const resignAttachmentId = attachmentId ?? idFromPickedUrl;
+  const isTokenMode = (api.getBaseUrl?.() ?? "") !== "";
+  const pickedHasExpiringSig = mediaURLHasExpiringSignature(pickedUrl);
+  const needsResign =
+    isTokenMode &&
+    !!resignAttachmentId &&
+    !!pickedUrl &&
+    (idFromPickedUrl !== undefined || pickedHasExpiringSig);
+
+  const { data: fresh, isFetched: resignFetched } = useQuery({
+    queryKey: ["attachment-inline-resign", resignAttachmentId],
+    queryFn: () => api.getAttachment(resignAttachmentId as string),
+    enabled: needsResign,
+    staleTime: RESIGN_STALE_MS,
+    gcTime: RESIGN_STALE_MS,
+  });
+
+  let upgraded = pickedUrl;
+  if (needsResign) {
+    const dl = fresh?.download_url ?? "";
+    // Accept the fresh URL only when it is an actual upgrade — absolute and
+    // no longer the auth-gated API shape (i.e. a signed storage URL the
+    // renderer can load natively).
+    if (
+      /^https?:\/\//i.test(dl) &&
+      attachmentIdFromDownloadURL(dl) === undefined
+    ) {
+      upgraded = dl;
+    }
+  }
+
+  // Non-CloudFront / still-auth-gated after re-sign settled: materialize
+  // via authenticated fetch. Wait for the re-sign query so we don't race
+  // a blob download against a CloudFront signed URL that is about to land.
+  const stillAuthGated =
+    isTokenMode &&
+    !!resignAttachmentId &&
+    attachmentIdFromDownloadURL(upgraded) !== undefined &&
+    (!needsResign || resignFetched);
+
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!stillAuthGated || !resignAttachmentId) {
+      setBlobUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let created: string | null = null;
+    void api
+      .getAttachmentMediaObjectURL(resignAttachmentId)
+      .then((url) => {
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        created = url;
+        setBlobUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setBlobUrl(null);
+      });
+    return () => {
+      cancelled = true;
+      if (created) URL.revokeObjectURL(created);
+      setBlobUrl(null);
+    };
+  }, [stillAuthGated, resignAttachmentId]);
+
+  if (stillAuthGated && blobUrl) return blobUrl;
+  return upgraded;
+}
+
+function mediaURLHasExpiringSignature(rawURL: string): boolean {
+  if (!rawURL || !/^https?:\/\//i.test(rawURL)) return false;
+  try {
+    return hasExpiringSignatureQuery(new URL(rawURL).searchParams);
+  } catch {
+    return SIGNED_QUERY_FALLBACK_RE.test(rawURL);
+  }
+}
+
+const SIGNED_QUERY_FALLBACK_RE =
+  /[?&](Signature|X-Amz-Signature|Key-Pair-Id|Expires|X-Amz-Expires)=/i;
+
+// ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
 
@@ -323,9 +444,12 @@ export function Attachment({
   const cdnSigned = useConfigStore((s) => s.cdnSigned);
   const download = useDownloadAttachment();
   const preview = useAttachmentPreview();
-  const sequence = useImageSequencePreview();
 
   const state = normalize(attachment, resolveAttachment, cdnDomain, cdnSigned);
+  // The picked URL may still be the auth-gated API endpoint (reopened drafts
+  // whose persisted record has no signed download_url). Upgrade it to a
+  // freshly signed URL on clients that can't load the endpoint natively.
+  const mediaUrl = useResignedInlineMediaURL(state.attachmentId, state.url);
   const forceKind =
     attachment.kind === "url" ? attachment.forceKind : undefined;
   const kind =
@@ -333,33 +457,8 @@ export function Attachment({
     (state.filename || state.contentType
       ? getPreviewKind(state.contentType, state.filename)
       : null);
-  // The picked URL may still be the auth-gated API endpoint (reopened drafts
-  // whose persisted record has no signed download_url). Upgrade it to a
-  // freshly signed URL on clients that can't load the endpoint natively, or —
-  // on deployments that have no signed URL to give — to an object URL built
-  // from the authenticated byte fetch. Only the image branch renders a native
-  // resource load, so only it opts into that byte fetch.
-  const mediaUrl = useResignedInlineMediaURL(
-    state.attachmentId,
-    state.url,
-    kind === "image",
-  );
-  // Object URLs are session-local, so anything that hands a URL to the user or
-  // to another surface keeps the durable pick instead.
-  const shareUrl = isObjectURL(mediaUrl) ? state.url : mediaUrl;
-
-  // Identity this image has in the surrounding surface's sequence: the
-  // attachment id once the URL resolves to a record, otherwise the URL exactly
-  // as written in the body — the same pair `collectImageSequence` keys on.
-  const sequenceKey =
-    state.attachmentId ?? (attachment.kind === "url" ? attachment.url : "");
 
   const openPreview = () => {
-    // Inside an issue / chat, an image opens the surface's shared viewer at
-    // its real position so the reader can page through the rest. Anything the
-    // sequence doesn't know — a composer's in-flight upload, a surface with no
-    // provider — falls through to the single-image preview below.
-    if (kind === "image" && sequence.openAt(sequenceKey)) return;
     if (state.record) {
       preview.tryOpen({
         kind: "full",
@@ -384,7 +483,7 @@ export function Attachment({
       download(state.attachmentId);
       return;
     }
-    if (shareUrl) openByUrl(shareUrl);
+    if (mediaUrl) openByUrl(mediaUrl);
   };
 
   if (kind === "image") {
@@ -392,7 +491,6 @@ export function Attachment({
       <>
         <ImageAttachmentView
           src={mediaUrl}
-          linkUrl={shareUrl}
           alt={state.filename}
           uploading={state.uploading}
           width={state.width}
@@ -430,7 +528,7 @@ export function Attachment({
         filename={state.filename}
         contentType={state.contentType}
         attachmentId={state.attachmentId}
-        href={shareUrl || undefined}
+        href={mediaUrl || undefined}
         uploading={state.uploading}
         onPreview={openPreview}
         onDownload={handleDownload}
@@ -453,12 +551,6 @@ export function Attachment({
 
 interface ImageAttachmentViewProps {
   src: string;
-  /**
-   * URL handed to the user by Copy Link. Splits from `src` only when `src` is
-   * a session-local object URL (proxy-mode byte fallback) — pasting a `blob:`
-   * URL anywhere outside this renderer resolves to nothing.
-   */
-  linkUrl: string;
   alt: string;
   uploading: boolean;
   width?: number;
@@ -473,7 +565,6 @@ interface ImageAttachmentViewProps {
 
 function ImageAttachmentView({
   src,
-  linkUrl,
   alt,
   uploading,
   width,
@@ -488,7 +579,7 @@ function ImageAttachmentView({
   const { t } = useT("editor");
 
   const handleCopyLink = async () => {
-    if (await copyText(linkUrl)) {
+    if (await copyText(src)) {
       toast.success(t(($) => $.image.link_copied));
     } else {
       toast.error(t(($) => $.image.copy_link_failed));

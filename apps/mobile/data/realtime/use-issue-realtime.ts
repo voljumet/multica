@@ -12,6 +12,8 @@
  *     task:failed / task:cancelled → invalidate timeline + detail (task
  *     state can flip an issue's status server-side without firing
  *     issue:updated, so we refetch the authoritative detail too)
+ *   - task:message → append into shared `["task-messages", taskId]` cache
+ *     (same key chat uses) so the issue Agent Runs transcript grows live
  *   - reconnect → invalidate detail + timeline (we might've missed events
  *     while disconnected; server has no replay buffer for this client)
  *
@@ -34,6 +36,7 @@ import type {
 } from "@multica/core/types";
 import { issueKeys } from "@/data/queries/issue-keys";
 import { useWSSubscriptions } from "@/lib/use-ws-subscriptions";
+import { appendTaskMessage } from "./chat-ws-updaters";
 import {
   addCommentReaction,
   addIssueReaction,
@@ -222,6 +225,15 @@ export function useIssueRealtime(
         ws.on("task:completed", onTaskEvent),
         ws.on("task:failed", onTaskEvent),
         ws.on("task:cancelled", onTaskEvent),
+        // Live execution log for issue runs. Payload always carries
+        // `issue_id` (see TaskMessagePayload); chat-only traffic has an
+        // empty/other issue_id and is ignored here. Cache write is
+        // seq-idempotent so a concurrent chat-session subscription on the
+        // same task_id is safe.
+        ws.on("task:message", (payload: TaskMessagePayload) => {
+          if (payload.issue_id !== issueId) return;
+          appendTaskMessage(qc, payload);
+        }),
 
         // ----- Reconnect -----
         ws.onReconnect(() => {

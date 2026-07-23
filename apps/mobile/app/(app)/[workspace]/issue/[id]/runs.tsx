@@ -5,11 +5,8 @@
  * sections hide entirely.
  *
  * Both entry points (the in-card AgentActivityRow and the Stack-header
- * AgentHeaderBadge) now `router.push("/[workspace]/issue/[id]/runs")` —
- * the legacy `useRunsSheetStore` is gone since the route system is the
- * single source of truth for what's open.
- *
- * Past-row tap is a no-op in v1 — transcript drilldown is deferred.
+ * AgentHeaderBadge) push this route. Tapping a row opens the per-task
+ * transcript at `issue/[id]/runs/[taskId]`.
  */
 import { useMemo } from "react";
 import { ScrollView, View } from "react-native";

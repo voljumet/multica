@@ -9,3 +9,4 @@ export {
 } from "./settings";
 export type { GitLabSettings } from "./settings";
 export { useGitLabSettings } from "./use-gitlab-settings";
+export { buildGitLabWebhookUrl } from "./webhook-url";

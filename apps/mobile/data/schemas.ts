@@ -71,6 +71,27 @@ export const AttachmentSchema: z.ZodType<Attachment> = z.object({
 export const AttachmentListSchema = z.array(AttachmentSchema).default([]);
 export const EMPTY_ATTACHMENT_LIST: Attachment[] = [];
 
+/** Empty fallback for GET /api/attachments/:id re-sign failures. Downstream
+ *  media resolvers treat empty download_url as "keep the previously picked
+ *  URL" so a transient 5xx doesn't blank an already-rendered image. */
+export const EMPTY_ATTACHMENT: Attachment = {
+  id: "",
+  workspace_id: "",
+  issue_id: null,
+  comment_id: null,
+  chat_session_id: null,
+  chat_message_id: null,
+  uploader_type: "",
+  uploader_id: "",
+  filename: "",
+  url: "",
+  download_url: "",
+  markdown_url: "",
+  content_type: "",
+  size_bytes: 0,
+  created_at: "",
+};
+
 /** Comment write endpoints all return a full Comment. Used by createComment /
  *  updateComment / resolveComment / unresolveComment via fetchValidatedWith.
  *  Empty fallback yields `id: ""` so downstream code (the mutations'

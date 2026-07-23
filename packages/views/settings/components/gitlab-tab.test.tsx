@@ -5,37 +5,41 @@ import { GitLabTab } from "./gitlab-tab";
 
 const webhookSecret = "glwh_server-gitlab-webhook-secret";
 
-vi.mock("@multica/core/gitlab", () => ({
-  gitlabConnectionsOptions: () => ({
-    queryKey: ["gitlab", "ws1", "connections"],
-    queryFn: async () => ({
-      connections: [
-        {
-          id: "c1",
-          workspace_id: "ws1",
-          namespace: "my-group",
-          namespace_type: "group",
-          avatar_url: null,
-          created_at: "2026-01-01T00:00:00Z",
-          webhook_secret: webhookSecret,
-        },
-      ],
-      configured: true,
-      can_manage: true,
+vi.mock("@multica/core/gitlab", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@multica/core/gitlab")>();
+  return {
+    ...actual,
+    gitlabConnectionsOptions: () => ({
+      queryKey: ["gitlab", "ws1", "connections"],
+      queryFn: async () => ({
+        connections: [
+          {
+            id: "c1",
+            workspace_id: "ws1",
+            namespace: "my-group",
+            namespace_type: "group",
+            avatar_url: null,
+            created_at: "2026-01-01T00:00:00Z",
+            webhook_secret: webhookSecret,
+          },
+        ],
+        configured: true,
+        can_manage: true,
+      }),
+      enabled: true,
     }),
-    enabled: true,
-  }),
-  useDeleteGitLabConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useRotateGitLabWebhookSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  deriveGitLabSettings: () => ({
-    enabled: true,
-    mrSidebar: true,
-    issueSync: true,
-    commentSync: true,
-    issueSyncLabel: "agent",
-  }),
-  DEFAULT_GITLAB_ISSUE_SYNC_LABEL: "agent",
-}));
+    useDeleteGitLabConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useRotateGitLabWebhookSecret: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    deriveGitLabSettings: () => ({
+      enabled: true,
+      mrSidebar: true,
+      issueSync: true,
+      commentSync: true,
+      issueSyncLabel: "agent",
+    }),
+    DEFAULT_GITLAB_ISSUE_SYNC_LABEL: "agent",
+  };
+});
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws1" }));
 vi.mock("@multica/core/auth", () => ({
@@ -52,7 +56,14 @@ vi.mock("@multica/core/workspace/queries", () => ({
 vi.mock("@multica/core/paths", () => ({
   useCurrentWorkspace: () => ({ id: "ws1", name: "Test", settings: {} }),
 }));
-vi.mock("@multica/core/api", () => ({ api: { updateWorkspace: vi.fn() } }));
+vi.mock("@multica/core/api", () => ({
+  api: {
+    updateWorkspace: vi.fn(),
+    // Desktop-style split origin — must not fall back to window.location.origin
+    // (which is often file:// in Electron).
+    getBaseUrl: () => "https://multica.paral.no",
+  },
+}));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -97,5 +108,13 @@ describe("GitLabTab", () => {
     // Placeholder matches DEFAULT_GITLAB_ISSUE_SYNC_LABEL; value is the derived setting.
     const input = await screen.findByPlaceholderText("agent");
     expect((input as HTMLInputElement).value).toBe("agent");
+  });
+
+  it("shows an absolute webhook URL from the API base, not file://", async () => {
+    render(<GitLabTab />, { wrapper });
+    const input = await screen.findByDisplayValue(
+      "https://multica.paral.no/api/webhooks/gitlab/ws1",
+    );
+    expect((input as HTMLInputElement).value).not.toMatch(/^file:/);
   });
 });

@@ -16,6 +16,7 @@
  * use-chat-session-realtime.ts).
  */
 import { queryOptions } from "@tanstack/react-query";
+import type { TaskMessagePayload } from "@multica/core/types";
 import { api } from "@/data/api";
 
 export const chatKeys = {
@@ -79,3 +80,26 @@ export const taskMessagesOptions = (taskId: string | null | undefined) =>
     enabled: isTaskMessageTaskId(taskId),
     staleTime: Infinity,
   });
+
+/**
+ * Merge task-message batches into one seq-ordered, seq-deduplicated list for
+ * the shared `["task-messages", taskId]` cache. Existing entries win on
+ * conflict; the original array reference is preserved when nothing new
+ * arrives so React Query observers don't re-render on duplicate events.
+ *
+ * Mirrors `packages/core/chat/queries.ts` `mergeTaskMessagesBySeq` — both
+ * the realtime `task:message` handler and the transcript REST backfill
+ * write through this so a forced backfill never blind-replaces a seq the
+ * WebSocket already delivered (and a late WS event is never lost to an
+ * in-flight backfill).
+ */
+export function mergeTaskMessagesBySeq(
+  existing: readonly TaskMessagePayload[],
+  incoming: readonly TaskMessagePayload[],
+): TaskMessagePayload[] {
+  if (incoming.length === 0) return existing as TaskMessagePayload[];
+  const knownSeqs = new Set(existing.map((m) => m.seq));
+  const fresh = incoming.filter((m) => !knownSeqs.has(m.seq));
+  if (fresh.length === 0) return existing as TaskMessagePayload[];
+  return [...existing, ...fresh].sort((a, b) => a.seq - b.seq);
+}
