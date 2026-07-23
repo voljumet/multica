@@ -1979,6 +1979,14 @@ func (h *Handler) ImportSkill(w http.ResponseWriter, r *http.Request) {
 		imported, err = fetchFromSkillsSh(httpClient, normalized)
 	case sourceGitHub:
 		imported, err = fetchFromGitHub(httpClient, normalized)
+	case sourceGitLab:
+		var glToken string
+		glToken, err = h.gitlabAccessTokenForWorkspace(r.Context(), workspaceUUID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "no GitLab connection found for this workspace — connect GitLab in Settings first")
+			return
+		}
+		imported, err = fetchFromGitLab(httpClient, glToken, normalized)
 	}
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())

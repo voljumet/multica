@@ -35,7 +35,7 @@ func (h *Handler) RefreshSkillFromURL(w http.ResponseWriter, r *http.Request) {
 
 	sourceURL, ok := skillConfigSourceURL(skill.Config)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "this skill has no source URL to refresh from; only skills imported from GitHub, ClawHub, or Skills.sh can be updated from URL")
+		writeError(w, http.StatusBadRequest, "this skill has no source URL to refresh from; only skills imported from GitHub, ClawHub, Skills.sh, or a connected GitLab instance can be updated from URL")
 		return
 	}
 
@@ -54,6 +54,14 @@ func (h *Handler) RefreshSkillFromURL(w http.ResponseWriter, r *http.Request) {
 		imported, err = fetchFromSkillsSh(httpClient, normalized)
 	case sourceGitHub:
 		imported, err = fetchFromGitHub(httpClient, normalized)
+	case sourceGitLab:
+		var glToken string
+		glToken, err = h.gitlabAccessTokenForWorkspace(r.Context(), skill.WorkspaceID)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "no GitLab connection found for this workspace — connect GitLab in Settings first")
+			return
+		}
+		imported, err = fetchFromGitLab(httpClient, glToken, normalized)
 	default:
 		writeError(w, http.StatusBadRequest, "saved source URL is not a supported import source")
 		return
