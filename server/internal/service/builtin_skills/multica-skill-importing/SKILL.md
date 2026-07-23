@@ -56,12 +56,21 @@ multica skill import --url skills.sh/owner/repo/skill --output json
 multica skill import --url github.com/owner/repo --output json
 multica skill import --url github.com/owner/repo/tree/main/path/to/skill --output json
 multica skill import --url github.com/owner/repo/blob/main/path/to/SKILL.md --output json
+multica skill import --url gitlab.company.com/group/repo/-/tree/main/path/to/skill --output json
 ```
 
-- `clawhub.ai`, `skills.sh`, `github.com` are the recognized hosts.
+- `clawhub.ai`, `skills.sh`, `github.com` are the recognized public hosts.
 - A GitHub URL may be a bare `owner/repo`, a `/tree/{ref}/...` directory, or a
   `/blob/{ref}/.../SKILL.md` file.
 - A bare ClawHub slug (no host) is accepted and routed to ClawHub.
+- **Self-hosted GitLab**: any URL whose host matches the server's `GITLAB_URL`
+  environment variable is accepted. The workspace must have an active GitLab
+  OAuth connection (Settings → GitLab); the connection's access token is used
+  automatically — no separate credentials are needed. Supported URL forms:
+  - `gitlab.host/group/repo` — repo root, default branch
+  - `gitlab.host/group/repo/-/tree/{ref}/{skill-dir}` — specific dir (canonical)
+  - `gitlab.host/group/sub/repo/-/tree/{ref}/{skill-dir}` — nested namespace
+  - Refresh (`multica skill refresh`) works the same way for GitLab-sourced skills.
 - Any other host is rejected with a 400 naming the supported sources.
 
 ## Local archive import (`.skill` / `.zip`)

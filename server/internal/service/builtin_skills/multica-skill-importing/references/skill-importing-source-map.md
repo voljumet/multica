@@ -106,6 +106,25 @@ that omit `on_conflict` still receive a bare `SkillWithFilesResponse`.
 | Bare slug (no host) defaults to ClawHub | `server/internal/handler/skill.go:798-800` |
 | `parseGitHubURL` handles `/tree/{ref}/...` and `/blob/{ref}/.../SKILL.md` | `server/internal/handler/skill.go:1450-1503` (tree/blob check `:1463-1480`) |
 
+## GitLab self-hosted source
+
+| Behavior | File |
+|---|---|
+| `sourceGitLab` enum value | `server/internal/handler/skill.go` — `const (sourceClawHub … sourceGitLab)` |
+| URL detection: host matched against `gitlabConfiguredHost()` | `server/internal/handler/skill.go` — `detectImportSource` |
+| `gitlabConfiguredHost()` — lowercased hostname of `GITLAB_URL` | `server/internal/handler/skill_gitlab.go` |
+| `parseGitLabURL` — extracts namespace, ref, skill dir | `server/internal/handler/skill_gitlab.go` |
+| `fetchFromGitLab` — fetches SKILL.md + supporting files via GitLab repository files API | `server/internal/handler/skill_gitlab.go` |
+| `gitlabAccessTokenForWorkspace` — decrypts (and refreshes if expired) workspace OAuth token | `server/internal/handler/skill_gitlab.go` |
+| Token threading in `ImportSkill` | `server/internal/handler/skill.go` — `case sourceGitLab:` in fetch switch |
+| Token threading in `RefreshSkillFromURL` | `server/internal/handler/skill_refresh.go` — `case sourceGitLab:` in fetch switch |
+| `origin.type` stored as `"gitlab"` for provenance | `server/internal/handler/skill_gitlab.go` — `fetchFromGitLab` result |
+
+Re-derive:
+```bash
+grep -n "sourceGitLab\|gitlabConfiguredHost\|fetchFromGitLab\|gitlabAccessToken" server/internal/handler/skill_gitlab.go server/internal/handler/skill.go server/internal/handler/skill_refresh.go
+```
+
 ## Additive add vs replace-all set
 
 | Behavior | File:line |
