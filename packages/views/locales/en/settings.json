@@ -620,7 +620,14 @@
   },
   "desktop": {
     "tabs": {
-      "updates": "Updates"
+      "updates": "Updates",
+      "leave_guard": {
+        "title": "Leave this tab?",
+        "description": "The desktop app reloads each tab when you switch or close it. Unsaved text and other local progress in this tab may be lost.",
+        "cancel": "Stay",
+        "confirm": "Leave tab",
+        "dont_ask_again": "Don't ask again this session"
+      }
     },
     "updates": {
       "title": "Updates",

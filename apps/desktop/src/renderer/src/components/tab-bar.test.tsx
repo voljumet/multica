@@ -65,6 +65,17 @@ vi.mock("@/stores/tab-store", () => {
   return { useTabStore, useActiveGroup, resolveRouteIcon };
 });
 
+// Pass-through leave guard so tab-bar unit tests assert store calls directly.
+vi.mock("@/platform/tab-leave-guard", () => ({
+  requestSetActiveTab: (tabId: string) => state.setActiveTab(tabId),
+  requestCloseTab: (tabId: string) => state.closeTab(tabId),
+  useTabLeaveGuardStore: {
+    getState: () => ({
+      requestLeave: (action: () => void) => action(),
+    }),
+  },
+}));
+
 vi.mock("@multica/core/paths", () => ({
   paths: {
     workspace: (slug: string) => ({

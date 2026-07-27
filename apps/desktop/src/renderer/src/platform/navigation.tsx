@@ -12,6 +12,10 @@ import {
   splitTabUrl,
   useActiveTabUrl,
 } from "@/stores/tab-store";
+import {
+  requestOpenTab,
+  requestSwitchWorkspace,
+} from "@/platform/tab-leave-guard";
 import { useWindowOverlayStore } from "@/stores/window-overlay-store";
 
 function requireRuntimeAppUrl(scope: string): string {
@@ -90,9 +94,9 @@ function tryRouteToOverlay(path: string): boolean {
 function tryRouteToOtherWorkspace(path: string): boolean {
   const targetSlug = extractWorkspaceSlug(path);
   if (!targetSlug) return false;
-  const { activeWorkspaceSlug, switchWorkspace } = useTabStore.getState();
+  const { activeWorkspaceSlug } = useTabStore.getState();
   if (targetSlug === activeWorkspaceSlug) return false;
-  switchWorkspace(targetSlug, path);
+  requestSwitchWorkspace(targetSlug, path);
   return true;
 }
 
@@ -119,7 +123,7 @@ function tryRouteToPinnedNewTab(path: string): boolean {
   if (currentPathname === newPathname) return false;
 
   const icon = resolveRouteIcon(path);
-  store.openTab(path, path, icon, { activate: true });
+  requestOpenTab(path, path, icon, { activate: true });
   return true;
 }
 
@@ -188,11 +192,11 @@ export function DesktopNavigationProvider({
         const slug = extractWorkspaceSlug(path);
         const store = useTabStore.getState();
         if (slug && slug !== store.activeWorkspaceSlug) {
-          store.switchWorkspace(slug, path);
+          requestSwitchWorkspace(slug, path);
           return;
         }
         const icon = resolveRouteIcon(path);
-        store.openTab(path, title ?? path, icon, { activate: opts?.activate });
+        requestOpenTab(path, title ?? path, icon, { activate: opts?.activate });
       },
       getShareableUrl: (path: string) => `${appUrl}${path}`,
     }),

@@ -938,9 +938,11 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 			// Assign a Multica agent when a GitLab label uniquely matches an
 			// agent name (exact title or "{syncLabel}::{name}"). Ambiguous or
 			// missing matches leave the issue unassigned.
+			// Title includes the GitLab issue IID so Multica issues stay
+			// identifiable when many GitLab issues share similar titles.
 			createParams := service.IssueCreateParams{
 				WorkspaceID:    conn.WorkspaceID,
-				Title:          p.ObjectAttributes.Title,
+				Title:          gitlabImportedIssueTitle(p.ObjectAttributes.Title, glIID),
 				Description:    pgtype.Text{String: p.ObjectAttributes.Description, Valid: p.ObjectAttributes.Description != ""},
 				Status:         "todo",
 				Priority:       "none",
@@ -1451,6 +1453,16 @@ func workspaceGitLabCommentSyncEnabled(settings []byte) bool {
 // defaultGitLabIssueSyncLabel is used when workspace settings omit or blank
 // gitlab_issue_sync_label. Historical installs always matched the "agent" label.
 const defaultGitLabIssueSyncLabel = "agent"
+
+// gitlabImportedIssueTitle builds the Multica title for a GitLab-synced issue:
+// "{gitlab title} #{iid}" (e.g. "Fix login #42").
+func gitlabImportedIssueTitle(title string, iid int32) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return fmt.Sprintf("#%d", iid)
+	}
+	return fmt.Sprintf("%s #%d", title, iid)
+}
 
 // workspaceGitLabIssueSyncLabel returns the GitLab label title that triggers
 // Multica issue creation. Defaults to "agent" when unset or empty.

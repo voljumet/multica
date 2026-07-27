@@ -19,8 +19,10 @@ import { useNavigation } from "@multica/views/navigation";
 import { getCurrentSlug, subscribeToCurrentSlug } from "@multica/core/platform";
 import { useDesktopUnreadBadge } from "@multica/views/platform";
 import { DesktopNavigationProvider } from "@/platform/navigation";
+import { requestOpenTab } from "@/platform/tab-leave-guard";
 import { TabBar } from "./tab-bar";
 import { TabContent } from "./tab-content";
+import { TabLeaveConfirmDialog } from "./tab-leave-confirm-dialog";
 import { WindowOverlay } from "./window-overlay";
 
 const TOP_BAR_HEIGHT_CLASS = "h-12";
@@ -154,9 +156,9 @@ function useInternalLinkHandler() {
       const path = (e as CustomEvent).detail?.path;
       if (!path) return;
       const icon = resolveRouteIcon(path);
-      const store = useTabStore.getState();
-      const tabId = store.openTab(path, path, icon);
-      store.setActiveTab(tabId);
+      // Activate into the target tab (or create + activate). Leave guard
+      // confirms when that would unmount the current host.
+      requestOpenTab(path, path, icon, { activate: true });
     };
     window.addEventListener("multica:navigate", handler);
     return () => window.removeEventListener("multica:navigate", handler);
@@ -255,6 +257,7 @@ export function DesktopShell() {
         </div>
         {slug && <ModalRegistry />}
         {slug && <SearchCommand />}
+        <TabLeaveConfirmDialog />
         <WindowOverlay />
       </WorkspaceSlugProvider>
     </DesktopNavigationProvider>

@@ -464,7 +464,14 @@
   },
   "desktop": {
     "tabs": {
-      "updates": "업데이트"
+      "updates": "업데이트",
+      "leave_guard": {
+        "title": "이 탭을 떠나시겠어요?",
+        "description": "데스크톱 앱은 탭을 전환하거나 닫을 때 페이지를 다시 로드합니다. 이 탭의 저장되지 않은 텍스트와 기타 로컬 작업 내용이 사라질 수 있어요.",
+        "cancel": "머물기",
+        "confirm": "탭 떠나기",
+        "dont_ask_again": "이 세션에서는 다시 묻지 않기"
+      }
     },
     "updates": {
       "title": "업데이트",

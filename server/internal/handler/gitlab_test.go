@@ -43,6 +43,21 @@ func TestWorkspaceGitLabIssueSyncLabel(t *testing.T) {
 	}
 }
 
+func TestGitLabImportedIssueTitle(t *testing.T) {
+	if got := gitlabImportedIssueTitle("Fix login", 42); got != "Fix login #42" {
+		t.Fatalf("got %q, want %q", got, "Fix login #42")
+	}
+	if got := gitlabImportedIssueTitle("  spaced  ", 7); got != "spaced #7" {
+		t.Fatalf("trim: got %q, want %q", got, "spaced #7")
+	}
+	if got := gitlabImportedIssueTitle("", 99); got != "#99" {
+		t.Fatalf("empty title: got %q, want %q", got, "#99")
+	}
+	if got := gitlabImportedIssueTitle("   ", 3); got != "#3" {
+		t.Fatalf("blank title: got %q, want %q", got, "#3")
+	}
+}
+
 func TestGitLabLabelAgentNameCandidates(t *testing.T) {
 	labels := []struct {
 		Title string `json:"title"`
@@ -361,8 +376,8 @@ func TestHandleGitLabIssueEvent_LabelAdd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("multica issue not created: %v", err)
 	}
-	if issue.Title != "Sync me" {
-		t.Errorf("title: got %q, want %q", issue.Title, "Sync me")
+	if issue.Title != "Sync me #10" {
+		t.Errorf("title: got %q, want %q", issue.Title, "Sync me #10")
 	}
 	if issue.AssigneeType.Valid {
 		t.Errorf("expected unassigned without agent-name label, got type=%q", issue.AssigneeType.String)
@@ -724,8 +739,8 @@ func TestHandleGitLabIssueEvent_CustomSyncLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("multica issue not created: %v", err)
 	}
-	if issue.Title != "Custom label sync" {
-		t.Errorf("title: got %q, want %q", issue.Title, "Custom label sync")
+	if issue.Title != "Custom label sync #51" {
+		t.Errorf("title: got %q, want %q", issue.Title, "Custom label sync #51")
 	}
 }
 

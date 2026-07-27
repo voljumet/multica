@@ -56,6 +56,11 @@ import {
   resolveRouteIcon,
   type Tab,
 } from "@/stores/tab-store";
+import {
+  requestCloseTab,
+  requestSetActiveTab,
+  useTabLeaveGuardStore,
+} from "@/platform/tab-leave-guard";
 import { paths } from "@multica/core/paths";
 import { parseIssueWindowPath } from "../../../shared/issue-window";
 
@@ -191,8 +196,6 @@ function SortableTabItem({
    */
   showSeparator: boolean;
 }) {
-  const setActiveTab = useTabStore((s) => s.setActiveTab);
-  const closeTab = useTabStore((s) => s.closeTab);
   const closeOtherTabs = useTabStore((s) => s.closeOtherTabs);
   const togglePin = useTabStore((s) => s.togglePin);
   const issueWindowPath = parseIssueWindowPath(tab.url);
@@ -221,12 +224,12 @@ function SortableTabItem({
 
   const handleClick = () => {
     if (isActive) return;
-    setActiveTab(tab.id);
+    requestSetActiveTab(tab.id);
   };
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation();
-    closeTab(tab.id);
+    requestCloseTab(tab.id);
   };
 
   const handleTogglePin = (e: React.MouseEvent) => {
@@ -396,7 +399,7 @@ function SortableTabItem({
             <ContextMenuItem
               variant="destructive"
               disabled={tab.pinned || isOnly}
-              onClick={() => closeTab(tab.id)}
+              onClick={() => requestCloseTab(tab.id)}
             >
               <X />
               Close tab
@@ -490,17 +493,21 @@ function NewTabEdgeFeedback({
 }
 
 function NewTabButton() {
-  const addTab = useTabStore((s) => s.addTab);
-  const setActiveTab = useTabStore((s) => s.setActiveTab);
-
   const handleClick = () => {
     // New tab opens in the currently active workspace — tabs are scoped
     // per workspace, so there is no cross-workspace ambiguity to resolve.
+    // Defer create+activate until leave is confirmed so Cancel never leaves
+    // an orphan background tab behind.
     const activeSlug = useTabStore.getState().activeWorkspaceSlug;
     if (!activeSlug) return;
     const path = paths.workspace(activeSlug).issues();
-    const tabId = addTab(path, "Issues", resolveRouteIcon(path));
-    if (tabId) setActiveTab(tabId);
+    const icon = resolveRouteIcon(path);
+    useTabLeaveGuardStore.getState().requestLeave(() => {
+      const tabId = useTabStore
+        .getState()
+        .addTab(path, "Issues", icon);
+      if (tabId) useTabStore.getState().setActiveTab(tabId);
+    });
   };
 
   return (
