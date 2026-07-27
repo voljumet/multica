@@ -730,7 +730,14 @@
   },
   "desktop": {
     "tabs": {
-      "updates": "更新"
+      "updates": "更新",
+      "leave_guard": {
+        "title": "离开此标签页？",
+        "description": "桌面端在切换或关闭标签页时会重新加载页面。此标签页中未保存的文本和其他本地进度可能会丢失。",
+        "cancel": "留下",
+        "confirm": "离开标签页",
+        "dont_ask_again": "本次会话不再询问"
+      }
     },
     "updates": {
       "title": "更新",

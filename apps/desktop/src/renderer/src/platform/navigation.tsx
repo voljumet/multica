@@ -7,10 +7,15 @@ import { useAuthStore } from "@multica/core/auth";
 import { isReservedSlug } from "@multica/core/paths";
 import {
   useTabStore,
+  resolveRouteIcon,
   getActiveTab,
   splitTabUrl,
   useActiveTabUrl,
 } from "@/stores/tab-store";
+import {
+  requestOpenTab,
+  requestSwitchWorkspace,
+} from "@/platform/tab-leave-guard";
 import { useWindowOverlayStore } from "@/stores/window-overlay-store";
 
 function requireRuntimeAppUrl(scope: string): string {
@@ -89,34 +94,10 @@ function tryRouteToOverlay(path: string): boolean {
 function tryRouteToOtherWorkspace(path: string): boolean {
   const targetSlug = extractWorkspaceSlug(path);
   if (!targetSlug) return false;
-  const { activeWorkspaceSlug, switchWorkspace } = useTabStore.getState();
+  const { activeWorkspaceSlug } = useTabStore.getState();
   if (targetSlug === activeWorkspaceSlug) return false;
-  switchWorkspace(targetSlug, path);
+  requestSwitchWorkspace(targetSlug, path);
   return true;
-}
-
-/**
- * Open a path that a link inside content resolved to (the `multica:navigate`
- * event fired by the shared editor/markdown link handler) in a foreground tab.
- *
- * A content link is a jump to another subject, so it gets its own tab rather
- * than replacing what the user was reading. It can also address another
- * workspace — a pasted app URL, an agent quoting a cross-workspace issue — and
- * opening that inside the active workspace's tab group would mount it under the
- * wrong group, so the slug check routes it through switchWorkspace exactly like
- * an adapter push does.
- */
-export function routeContentLinkPath(path: string): void {
-  const store = useTabStore.getState();
-  const slug = extractWorkspaceSlug(path);
-  if (slug && slug !== store.activeWorkspaceSlug) {
-    store.switchWorkspace(slug, path);
-    return;
-  }
-  // Empty seed title — the tab bar derives the real title from the URL and
-  // cache; a raw path would flash before that resolves.
-  const tabId = store.openTab(path, "");
-  store.setActiveTab(tabId);
 }
 
 /**
@@ -141,7 +122,8 @@ function tryRouteToPinnedNewTab(path: string): boolean {
   const newPathname = splitTabUrl(path).pathname;
   if (currentPathname === newPathname) return false;
 
-  store.openTab(path, "", { activate: true });
+  const icon = resolveRouteIcon(path);
+  requestOpenTab(path, path, icon, { activate: true });
   return true;
 }
 
@@ -195,13 +177,6 @@ export function DesktopNavigationProvider({
       back: () => {
         useTabStore.getState().goBack();
       },
-      // The active tab's virtual history, same source the shell's back button
-      // reads. A tab opened straight onto a destination sits at index 0 and
-      // has nothing behind it.
-      canGoBack: () => {
-        const active = getActiveTab(useTabStore.getState());
-        return (active?.history.index ?? 0) > 0;
-      },
       pathname: location.pathname,
       searchParams: new URLSearchParams(location.search),
       openInNewTab: (
@@ -217,10 +192,11 @@ export function DesktopNavigationProvider({
         const slug = extractWorkspaceSlug(path);
         const store = useTabStore.getState();
         if (slug && slug !== store.activeWorkspaceSlug) {
-          store.switchWorkspace(slug, path);
+          requestSwitchWorkspace(slug, path);
           return;
         }
-        store.openTab(path, title ?? "", { activate: opts?.activate });
+        const icon = resolveRouteIcon(path);
+        requestOpenTab(path, title ?? path, icon, { activate: opts?.activate });
       },
       getShareableUrl: (path: string) => `${appUrl}${path}`,
     }),

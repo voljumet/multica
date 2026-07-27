@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@multica/ui/lib/utils";
 import { useTabHistory } from "@/hooks/use-tab-history";
+import { useActiveTitleSync } from "@/hooks/use-tab-sync";
+import { useTabStore, resolveRouteIcon } from "@/stores/tab-store";
 import {
   SidebarProvider,
   SidebarTrigger,
@@ -16,12 +18,11 @@ import { WorkspaceSlugProvider, paths, useCurrentWorkspace } from "@multica/core
 import { useNavigation } from "@multica/views/navigation";
 import { getCurrentSlug, subscribeToCurrentSlug } from "@multica/core/platform";
 import { useDesktopUnreadBadge } from "@multica/views/platform";
-import {
-  DesktopNavigationProvider,
-  routeContentLinkPath,
-} from "@/platform/navigation";
+import { DesktopNavigationProvider } from "@/platform/navigation";
+import { requestOpenTab } from "@/platform/tab-leave-guard";
 import { TabBar } from "./tab-bar";
 import { TabContent } from "./tab-content";
+import { TabLeaveConfirmDialog } from "./tab-leave-confirm-dialog";
 import { WindowOverlay } from "./window-overlay";
 
 const TOP_BAR_HEIGHT_CLASS = "h-12";
@@ -36,7 +37,7 @@ const toolbarMotion = {
 function WindowToolbar() {
   const { canGoBack, canGoForward, goBack, goForward } = useTabHistory();
   const navButtonClassName =
-    "flex size-7 items-center justify-center rounded-md text-faint-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-30";
+    "flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-30";
 
   return (
     <div
@@ -51,7 +52,7 @@ function WindowToolbar() {
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <SidebarTrigger
-          className="size-7 text-faint-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="size-7 text-muted-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         />
         <div className="flex items-center gap-1">
@@ -154,7 +155,10 @@ function useInternalLinkHandler() {
     const handler = (e: Event) => {
       const path = (e as CustomEvent).detail?.path;
       if (!path) return;
-      routeContentLinkPath(path);
+      const icon = resolveRouteIcon(path);
+      // Activate into the target tab (or create + activate). Leave guard
+      // confirms when that would unmount the current host.
+      requestOpenTab(path, path, icon, { activate: true });
     };
     window.addEventListener("multica:navigate", handler);
     return () => window.removeEventListener("multica:navigate", handler);
@@ -202,11 +206,20 @@ function DesktopInboxBridge() {
     });
   }, []);
 
+  useEffect(() => {
+    return window.desktopAPI.onOpenSettings(() => {
+      const slug = getCurrentSlug();
+      if (!slug) return;
+      pushRef.current(paths.workspace(slug).settings());
+    });
+  }, []);
+
   return null;
 }
 
 export function DesktopShell() {
   useInternalLinkHandler();
+  useActiveTitleSync();
   useNativeNavigationGestures();
 
   // Reactive read of current workspace slug from the platform singleton.
@@ -244,6 +257,7 @@ export function DesktopShell() {
         </div>
         {slug && <ModalRegistry />}
         {slug && <SearchCommand />}
+        <TabLeaveConfirmDialog />
         <WindowOverlay />
       </WorkspaceSlugProvider>
     </DesktopNavigationProvider>

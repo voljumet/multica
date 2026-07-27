@@ -16,6 +16,7 @@ import { DesktopShell } from "./components/desktop-layout";
 import { UpdateNotification } from "./components/update-notification";
 import { IssueWindow } from "./components/issue-window";
 import { useTabStore } from "./stores/tab-store";
+import { requestCmdWClose } from "./platform/tab-leave-guard";
 import { useWindowOverlayStore } from "./stores/window-overlay-store";
 import { useDaemonIPCBridge } from "./platform/daemon-ipc-bridge";
 import { createDesktopLocaleAdapter } from "./platform/i18n-adapter";
@@ -54,21 +55,9 @@ function useCmdWCloseTab() {
         window.desktopAPI.closeWindow();
         return;
       }
-      const store = useTabStore.getState();
-      const { activeWorkspaceSlug, byWorkspace } = store;
-      if (!activeWorkspaceSlug) {
-        // No workspace — nothing to close, dismiss the window.
-        window.desktopAPI.closeWindow();
-        return;
-      }
-      const group = byWorkspace[activeWorkspaceSlug];
-      if (!group || group.tabs.length <= 1) {
-        // Last tab (or no tabs) — close the window.
-        window.desktopAPI.closeWindow();
-        return;
-      }
-      // Multiple tabs — close the active one.
-      store.closeActiveTab();
+      // Confirms before unmounting the active tab (or closing the window
+      // when it is the last tab) so mid-edit work is not lost silently.
+      requestCmdWClose();
     });
   }, []);
 }
