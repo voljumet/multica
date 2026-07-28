@@ -50,7 +50,8 @@
     "source_runtime_unknown": "런타임에서 가져옴",
     "source_clawhub": "ClawHub에서 가져옴",
     "source_skills_sh": "Skills.sh에서 가져옴",
-    "source_github": "GitHub에서 가져옴"
+    "source_github": "GitHub에서 가져옴",
+    "source_gitlab": "GitLab에서 가져옴"
   },
   "actions": {
     "row_menu": "작업",
@@ -115,6 +116,7 @@
       "origin_clawhub": "가져옴 · ClawHub",
       "origin_skills_sh": "가져옴 · Skills.sh",
       "origin_github": "가져옴 · GitHub",
+      "origin_gitlab": "가져옴 · GitLab",
       "origin_workspace": "워크스페이스",
       "updated_label": "{{when}} 수정됨",
       "by_creator": "{{name}}님"
@@ -149,6 +151,7 @@
       "imported_clawhub": "ClawHub에서 가져옴",
       "imported_skills_sh": "Skills.sh에서 가져옴",
       "imported_github": "GitHub에서 가져옴",
+      "imported_gitlab": "GitLab에서 가져옴",
       "provider": "제공자 · {{provider}}",
       "refresh_from_url": "URL에서 업데이트",
       "refreshing": "업데이트 중…"
@@ -236,6 +239,7 @@
       "importing_clawhub": "ClawHub에서 가져오는 중...",
       "importing_skills_sh": "Skills.sh에서 가져오는 중...",
       "importing_github": "GitHub에서 가져오는 중...",
+      "importing_gitlab": "GitLab에서 가져오는 중...",
       "name_conflict_hint": " 가져온 스킬 이름이 이미 있습니다. 다시 시도하기 전에 기존 스킬을 삭제하세요.",
       "fallback_error": "가져오기 실패",
       "cancel": "취소",

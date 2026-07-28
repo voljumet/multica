@@ -78,6 +78,7 @@ const ORIGIN_TYPES: OriginType[] = [
   "clawhub",
   "skills_sh",
   "github",
+  "gitlab",
 ];
 
 function originIcon(type: OriginType) {
@@ -153,6 +154,7 @@ export function SkillListToolbar({
     clawhub: t(($) => $.table.source_clawhub),
     skills_sh: t(($) => $.table.source_skills_sh),
     github: t(($) => $.table.source_github),
+    gitlab: t(($) => $.table.source_gitlab),
   };
 
   const COLUMN_LABELS: Record<SkillColumnKey, string> = {

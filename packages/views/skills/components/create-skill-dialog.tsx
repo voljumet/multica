@@ -38,6 +38,8 @@ import { Label } from "@multica/ui/components/ui/label";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { cn } from "@multica/ui/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { gitlabConnectionsOptions } from "@multica/core/gitlab/queries";
 import { openExternal } from "../../platform";
 import { RuntimeLocalSkillImportPanel } from "./runtime-local-skill-import-panel";
 import { useT } from "../../i18n";
@@ -238,13 +240,14 @@ function ManualForm({
 // URL import form
 // ---------------------------------------------------------------------------
 
-type DetectedSource = "clawhub" | "skills.sh" | "github" | null;
+type DetectedSource = "clawhub" | "skills.sh" | "github" | "gitlab" | null;
 
-function detectUrlSource(url: string): DetectedSource {
+function detectUrlSource(url: string, gitlabHost: string): DetectedSource {
   const u = url.trim().toLowerCase();
   if (u.includes("clawhub.ai")) return "clawhub";
   if (u.includes("skills.sh")) return "skills.sh";
   if (u.includes("github.com")) return "github";
+  if (gitlabHost && u.includes(gitlabHost)) return "gitlab";
   return null;
 }
 
@@ -290,7 +293,12 @@ function UrlForm({
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const source = detectUrlSource(url);
+  const { data: gitlabData } = useQuery(gitlabConnectionsOptions(wsId));
+  const gitlabHost = gitlabData?.gitlab_url
+    ? new URL(gitlabData.gitlab_url).hostname.toLowerCase()
+    : "";
+  const gitlabConfigured = gitlabData?.configured === true;
+  const source = detectUrlSource(url, gitlabHost);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fadeStyle = useScrollFade(scrollRef);
 
@@ -315,6 +323,7 @@ function UrlForm({
     if (source === "clawhub") return t(($) => $.create.url.importing_clawhub);
     if (source === "skills.sh") return t(($) => $.create.url.importing_skills_sh);
     if (source === "github") return t(($) => $.create.url.importing_github);
+    if (source === "gitlab") return t(($) => $.create.url.importing_gitlab);
     return t(($) => $.create.url.importing);
   })();
 
@@ -349,7 +358,7 @@ function UrlForm({
           <p className="mb-2 text-xs text-muted-foreground">
             {t(($) => $.create.url.supported_sources)}
           </p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid gap-2 ${gitlabConfigured ? "grid-cols-4" : "grid-cols-3"}`}>
             <SourceCard
               label="ClawHub"
               exampleHost="clawhub.ai/owner/skill"
@@ -368,6 +377,14 @@ function UrlForm({
               browseUrl="https://github.com"
               active={source === "github"}
             />
+            {gitlabConfigured && gitlabData?.gitlab_url && (
+              <SourceCard
+                label="GitLab"
+                exampleHost={`${gitlabHost}/group/repo`}
+                browseUrl={gitlabData.gitlab_url}
+                active={source === "gitlab"}
+              />
+            )}
           </div>
         </div>
 

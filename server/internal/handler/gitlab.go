@@ -170,6 +170,7 @@ type ListGitLabConnectionsResponse struct {
 	Connections []GitLabConnectionResponse `json:"connections"`
 	Configured  bool                       `json:"configured"`
 	CanManage   bool                       `json:"can_manage"`
+	GitLabURL   string                     `json:"gitlab_url,omitempty"`
 }
 
 type GitLabIssueResponse struct {
@@ -1675,6 +1676,7 @@ func (h *Handler) ListGitLabConnections(w http.ResponseWriter, r *http.Request) 
 		Connections: resp,
 		Configured:  isGitLabConfigured(),
 		CanManage:   canManage,
+		GitLabURL:   gitlabBaseURL(),
 	})
 }
 

@@ -32,6 +32,7 @@ export interface ListGitLabConnectionsResponse {
   connections: GitLabConnection[];
   configured: boolean;
   can_manage?: boolean;
+  gitlab_url?: string;
 }
 
 export interface GitLabIssue {
