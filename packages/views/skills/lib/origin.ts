@@ -7,7 +7,7 @@ import type { Skill, SkillSummary } from "@multica/core/types";
  * `{ type: "manual" }` for them to keep the consumer code uniform.
  */
 export type OriginInfo = {
-  type: "runtime_local" | "clawhub" | "skills_sh" | "github" | "manual";
+  type: "runtime_local" | "clawhub" | "skills_sh" | "github" | "gitlab" | "manual";
   provider?: string;
   runtime_id?: string;
   source_path?: string;
@@ -22,6 +22,7 @@ export function readOrigin(skill: SkillSummary): OriginInfo {
   if (raw?.type === "clawhub") return raw;
   if (raw?.type === "skills_sh") return raw;
   if (raw?.type === "github") return raw;
+  if (raw?.type === "gitlab") return raw;
   return { type: "manual" };
 }
 
@@ -35,7 +36,8 @@ export function canRefreshFromURL(skill: SkillSummary): boolean {
   if (
     origin.type !== "github" &&
     origin.type !== "clawhub" &&
-    origin.type !== "skills_sh"
+    origin.type !== "skills_sh" &&
+    origin.type !== "gitlab"
   ) {
     return false;
   }

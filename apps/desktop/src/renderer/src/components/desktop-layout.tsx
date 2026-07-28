@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { cn } from "@multica/ui/lib/utils";
 import { useTabHistory } from "@/hooks/use-tab-history";
 import { useActiveTitleSync } from "@/hooks/use-tab-sync";
-import { useTabStore, resolveRouteIcon } from "@/stores/tab-store";
+import { resolveRouteIcon } from "@/stores/tab-store";
 import {
   SidebarProvider,
   SidebarTrigger,

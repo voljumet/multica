@@ -269,6 +269,7 @@ function useOriginLabel(origin: OriginInfo | null, runtime: AgentRuntime | null)
   if (origin.type === "clawhub") return t(($) => $.detail.subline.origin_clawhub);
   if (origin.type === "skills_sh") return t(($) => $.detail.subline.origin_skills_sh);
   if (origin.type === "github") return t(($) => $.detail.subline.origin_github);
+  if (origin.type === "gitlab") return t(($) => $.detail.subline.origin_gitlab);
   return t(($) => $.detail.subline.origin_workspace);
 }
 
@@ -438,7 +439,9 @@ function OriginSidebarCard({
         ? t(($) => $.detail.origin_card.imported_clawhub)
         : origin.type === "github"
           ? t(($) => $.detail.origin_card.imported_github)
-          : t(($) => $.detail.origin_card.imported_skills_sh);
+          : origin.type === "gitlab"
+            ? t(($) => $.detail.origin_card.imported_gitlab)
+            : t(($) => $.detail.origin_card.imported_skills_sh);
 
   return (
     <div className="rounded-md border bg-muted/30 p-3">

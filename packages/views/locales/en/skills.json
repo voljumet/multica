@@ -62,7 +62,8 @@
     "source_runtime_unknown": "From a runtime",
     "source_clawhub": "From ClawHub",
     "source_skills_sh": "From Skills.sh",
-    "source_github": "From GitHub"
+    "source_github": "From GitHub",
+    "source_gitlab": "From GitLab"
   },
   "actions": {
     "row_menu": "Actions",
@@ -127,7 +128,10 @@
       "origin_clawhub": "Imported · ClawHub",
       "origin_skills_sh": "Imported · Skills.sh",
       "origin_github": "Imported · GitHub",
-      "origin_workspace": "Created manually"
+      "origin_gitlab": "Imported · GitLab",
+      "origin_workspace": "Created manually",
+      "updated_label": "Updated {{when}}",
+      "by_creator": "by {{name}}"
     },
     "conflict_banner": {
       "title": "Someone else updated this skill",
@@ -146,6 +150,7 @@
       "imported_clawhub": "Imported from ClawHub",
       "imported_skills_sh": "Imported from Skills.sh",
       "imported_github": "Imported from GitHub",
+      "imported_gitlab": "Imported from GitLab",
       "provider": "provider · {{provider}}",
       "refresh_from_url": "Update from URL",
       "refreshing": "Updating…"
@@ -276,6 +281,7 @@
       "importing_clawhub": "Importing from ClawHub…",
       "importing_skills_sh": "Importing from Skills.sh…",
       "importing_github": "Importing from GitHub…",
+      "importing_gitlab": "Importing from GitLab…",
       "name_conflict_hint": " The imported skill's name already exists — delete the existing one before retrying.",
       "fallback_error": "Import failed",
       "cancel": "Cancel",
