@@ -53,6 +53,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          // Tinted notification icon for Android (iOS uses the app icon).
+          // Create a 96×96 white-on-transparent PNG at this path or omit if
+          // Android is not a target yet.
+          // icon: "./assets/notification-icon.png",
+          color: "#ffffff",
+        },
+      ],
       "@react-native-community/datetimepicker",
       "react-native-enriched-markdown",
       [

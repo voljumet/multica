@@ -1,6 +1,7 @@
 import "../global.css";
 
 import { useEffect, useRef } from "react";
+import * as Notifications from "expo-notifications";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -16,6 +17,18 @@ import { useWorkspaceStore } from "@/data/workspace-store";
 import { LightboxProvider, prewarmHighlighter } from "@/lib/markdown";
 import { NAV_THEME } from "@/lib/theme";
 import { useColorScheme } from "@/lib/use-color-scheme";
+
+// Configure how push notifications are presented while the app is foregrounded.
+// Must be at module level so it's set before any notification arrives.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 // Kick off Shiki highlighter init at module load — fires once per process,
 // finishes before the user navigates to any screen with a code block. If
@@ -53,6 +66,26 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
     });
     initialize();
   }, [initialize, qc]);
+
+  useEffect(() => {
+    // Handle notification tap: navigate to the issue that triggered the push.
+    // Fires when the user taps a notification that launches or foregrounds the app.
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data as
+          | { workspace_slug?: string; issue_id?: string }
+          | undefined;
+        if (data?.workspace_slug && data?.issue_id) {
+          router.push(
+            `/${data.workspace_slug}/issue/${data.issue_id}` as Parameters<
+              typeof router.push
+            >[0]
+          );
+        }
+      }
+    );
+    return () => sub.remove();
+  }, []);
 
   return <>{children}</>;
 }
