@@ -306,6 +306,9 @@ func notifyIssueSubscribers(
 	}
 	userPrefs := loadUserPrefs(ctx, queries, workspaceID, memberIDs)
 
+	// Look up workspace slug once for push deep-linking (shared by all subscribers).
+	wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
+
 	for _, sub := range subs {
 		// Only notify member-type subscribers (not agents)
 		if sub.UserType != "member" {
@@ -358,6 +361,9 @@ func notifyIssueSubscribers(
 			ActorID:     e.ActorID,
 			Payload:     map[string]any{"item": resp},
 		})
+		// Dispatch push notification to the subscriber's registered devices.
+		issueIDStr := util.UUIDToString(item.IssueID)
+		sendPushNotifications(ctx, queries, subID, item.Title, wsSlug, issueIDStr)
 	}
 
 	return notified
@@ -422,6 +428,11 @@ func notifyDirect(
 		ActorID:     e.ActorID,
 		Payload:     map[string]any{"item": resp},
 	})
+	// Dispatch push notification if recipient is a member.
+	if recipientType == "member" {
+		wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
+		sendPushNotifications(ctx, queries, recipientID, item.Title, wsSlug, issueID)
+	}
 }
 
 // notifyMentionedMembers creates inbox items for each @mentioned member,
