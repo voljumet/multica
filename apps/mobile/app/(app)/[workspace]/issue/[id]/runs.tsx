@@ -61,30 +61,44 @@ export default function IssueRunsRoute() {
     });
   }, [allTasks]);
 
+  const isEmpty = active.length === 0 && past.length === 0;
+
   return (
-    <View className="flex-1">
-      <View className="px-4 pt-4 pb-3">
+    <View style={{ flex: 1 }} className="bg-background">
+      <View className="px-4 pt-4 pb-3 border-b border-border bg-background">
         <Text className="text-base font-semibold text-foreground">
           Agent Runs
         </Text>
       </View>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="px-4 gap-3 pb-4">
-          {active.length > 0 ? (
-            <Section title="Active">
-              {active.map((task) => (
-                <RunRow key={task.id} task={task} issueId={id} />
-              ))}
-            </Section>
-          ) : null}
-          {past.length > 0 ? (
-            <Section title="Past">
-              {past.map((task) => (
-                <RunRow key={task.id} task={task} issueId={id} />
-              ))}
-            </Section>
-          ) : null}
-        </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 12 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {isEmpty ? (
+          <View className="py-12 items-center">
+            <Text className="text-sm text-muted-foreground text-center">
+              No agent runs on this issue yet.
+            </Text>
+          </View>
+        ) : (
+          <View className="gap-3">
+            {active.length > 0 ? (
+              <Section title="Active">
+                {active.map((task) => (
+                  <RunRow key={task.id} task={task} issueId={id} />
+                ))}
+              </Section>
+            ) : null}
+            {past.length > 0 ? (
+              <Section title="Past">
+                {past.map((task) => (
+                  <RunRow key={task.id} task={task} issueId={id} />
+                ))}
+              </Section>
+            ) : null}
+          </View>
+        )}
       </ScrollView>
     </View>
   );

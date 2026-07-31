@@ -1046,6 +1046,53 @@ func (q *Queries) SetAgentRuntimeOffline(ctx context.Context, id pgtype.UUID) er
 	return err
 }
 
+const setAgentRuntimeProviderLimits = `-- name: SetAgentRuntimeProviderLimits :one
+UPDATE agent_runtime
+SET
+    metadata = jsonb_set(
+        COALESCE(metadata, '{}'::jsonb),
+        '{provider_limits}',
+        $1::jsonb,
+        true
+    ),
+    updated_at = now()
+WHERE id = $2
+RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name
+`
+
+type SetAgentRuntimeProviderLimitsParams struct {
+	ProviderLimits []byte      `json:"provider_limits"`
+	ID             pgtype.UUID `json:"id"`
+}
+
+// Atomically sets metadata.provider_limits on a runtime (plan-limit snapshot
+// from a task failure or a future daemon probe). jsonb_set keeps sibling
+// keys (cli_version, version, …) intact.
+func (q *Queries) SetAgentRuntimeProviderLimits(ctx context.Context, arg SetAgentRuntimeProviderLimitsParams) (AgentRuntime, error) {
+	row := q.db.QueryRow(ctx, setAgentRuntimeProviderLimits, arg.ProviderLimits, arg.ID)
+	var i AgentRuntime
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.DaemonID,
+		&i.Name,
+		&i.RuntimeMode,
+		&i.Provider,
+		&i.Status,
+		&i.DeviceInfo,
+		&i.Metadata,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OwnerID,
+		&i.LegacyDaemonID,
+		&i.Visibility,
+		&i.ProfileID,
+		&i.CustomName,
+	)
+	return i, err
+}
+
 const touchAgentRuntimeLastSeen = `-- name: TouchAgentRuntimeLastSeen :execrows
 UPDATE agent_runtime
 SET last_seen_at = now()
@@ -1262,7 +1309,10 @@ DO UPDATE SET
     runtime_mode = EXCLUDED.runtime_mode,
     status = EXCLUDED.status,
     device_info = EXCLUDED.device_info,
-    metadata = EXCLUDED.metadata,
+    -- Merge rather than replace so server-written keys (e.g.
+    -- provider_limits from a plan-limit task failure) survive re-register.
+    -- Daemon keys (version, cli_version, launched_by) win on conflict.
+    metadata = COALESCE(agent_runtime.metadata, '{}'::jsonb) || EXCLUDED.metadata,
     owner_id = COALESCE(EXCLUDED.owner_id, agent_runtime.owner_id),
     last_seen_at = now(),
     updated_at = now()
@@ -1366,7 +1416,8 @@ DO UPDATE SET
     provider = EXCLUDED.provider,
     status = EXCLUDED.status,
     device_info = EXCLUDED.device_info,
-    metadata = EXCLUDED.metadata,
+    -- See UpsertAgentRuntime: preserve server-written metadata keys.
+    metadata = COALESCE(agent_runtime.metadata, '{}'::jsonb) || EXCLUDED.metadata,
     owner_id = COALESCE(EXCLUDED.owner_id, agent_runtime.owner_id),
     last_seen_at = now(),
     updated_at = now()

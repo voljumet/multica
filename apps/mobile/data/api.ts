@@ -68,6 +68,7 @@ import {
   ActiveTasksResponseSchema,
   AgentListSchema,
   AgentTaskListSchema,
+  AgentTaskSchema,
   AttachmentListSchema,
   AttachmentSchema,
   ChatMessageListSchema,
@@ -77,6 +78,7 @@ import {
   ChatSessionSchema,
   EMPTY_ACTIVE_TASKS_RESPONSE,
   EMPTY_AGENT_LIST,
+  EMPTY_AGENT_TASK,
   EMPTY_AGENT_TASK_LIST,
   EMPTY_ATTACHMENT,
   EMPTY_ATTACHMENT_LIST,
@@ -1129,6 +1131,25 @@ class ApiClient {
 
   async cancelTaskById(taskId: string): Promise<void> {
     await this.fetch<void>(`/api/tasks/${taskId}/cancel`, { method: "POST" });
+  }
+
+  /**
+   * Re-run a terminal agent task on an issue. Pass `taskId` so the server
+   * restarts the agent that owned that run (not the issue's current
+   * assignee). Mirrors web `api.rerunIssue` — used for failed/cancelled
+   * Retry on the runs list, transcript, and agent-failure comments.
+   */
+  async rerunIssue(issueId: string, taskId?: string): Promise<AgentTask> {
+    return this.fetchValidatedWith(
+      `/api/issues/${issueId}/rerun`,
+      AgentTaskSchema,
+      EMPTY_AGENT_TASK,
+      {
+        method: "POST",
+        body: JSON.stringify(taskId ? { task_id: taskId } : {}),
+      },
+      { endpoint: "POST /api/issues/:id/rerun" },
+    );
   }
 
   /** Live execution timeline for a task — used by the chat screen to

@@ -10,6 +10,11 @@
  * reconnect (or messages emitted before this screen mounted) is healed
  * without blind-replacing rows the WS already delivered. Mirrors web's
  * LiveTranscriptDialog in packages/views/common/task-transcript/.
+ *
+ * Layout note: formSheet + headerShown:false requires the body to own a
+ * solid, non-overlapping header. The ScrollView must only fill space
+ * below it (explicit flex styles) — otherwise the log paints under
+ * "Transcript" / agent name and steals taps (including Cancel / Retry).
  */
 import { useEffect, useMemo, useRef } from "react";
 import {
@@ -26,7 +31,11 @@ import { Text } from "@/components/ui/text";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
 import { PulseDot } from "@/components/ui/pulse-dot";
 import { ChatTimeline } from "@/components/chat/chat-timeline";
-import { useCancelTask } from "@/data/mutations/issues";
+import {
+  rerunErrorMessage,
+  useCancelTask,
+  useRerunTask,
+} from "@/data/mutations/issues";
 import {
   issueActiveTasksOptions,
   issueTasksOptions,
@@ -87,6 +96,10 @@ export default function IssueRunTranscriptRoute() {
   if (isLive) wasLiveRef.current = true;
   const showAsLive = isLive || wasLiveRef.current;
 
+  const canRetry =
+    task != null &&
+    (task.status === "failed" || task.status === "cancelled");
+
   const { data: messages = [], isLoading, isFetched } = useQuery(
     taskMessagesOptions(taskId),
   );
@@ -138,8 +151,11 @@ export default function IssueRunTranscriptRoute() {
     : null;
 
   return (
-    <View className="flex-1">
-      <View className="px-4 pt-4 pb-3 gap-2 border-b border-border">
+    <View style={{ flex: 1 }} className="bg-background">
+      {/* Solid header — must not overlap the ScrollView. formSheet bodies
+       *  without an explicit column flex + solid bg let the log paint under
+       *  the title row and steal Cancel / Retry taps. */}
+      <View className="px-4 pt-4 pb-3 gap-2 border-b border-border bg-background">
         <Text className="text-base font-semibold text-foreground">
           Transcript
         </Text>
@@ -165,6 +181,8 @@ export default function IssueRunTranscriptRoute() {
             </View>
             {isLive ? (
               <CancelButton taskId={task.id} issueId={issueId} />
+            ) : canRetry ? (
+              <RetryButton taskId={task.id} issueId={issueId} />
             ) : null}
           </View>
         ) : null}
@@ -172,9 +190,14 @@ export default function IssueRunTranscriptRoute() {
 
       <ScrollView
         ref={scrollRef}
-        className="flex-1"
-        contentContainerClassName="px-4 py-3 pb-8"
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 32,
+        }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {isLoading && !isFetched ? (
           <View className="py-12 items-center">
@@ -236,8 +259,42 @@ function CancelButton({
       onPress={onPress}
       disabled={mutation.isPending}
       className="px-3 py-1.5 rounded-md bg-secondary active:opacity-70"
+      accessibilityRole="button"
+      accessibilityLabel="Cancel task"
     >
       <Text className="text-xs font-medium text-foreground">Cancel</Text>
+    </Pressable>
+  );
+}
+
+function RetryButton({
+  taskId,
+  issueId,
+}: {
+  taskId: string;
+  issueId: string;
+}) {
+  const mutation = useRerunTask(issueId);
+
+  const onPress = () => {
+    mutation.mutate(taskId, {
+      onError: (err) => {
+        Alert.alert("Couldn't re-run", rerunErrorMessage(err));
+      },
+    });
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={mutation.isPending}
+      className="px-3 py-1.5 rounded-md bg-secondary active:opacity-70"
+      accessibilityRole="button"
+      accessibilityLabel="Retry this run"
+    >
+      <Text className="text-xs font-medium text-foreground">
+        {mutation.isPending ? "Retrying…" : "Retry"}
+      </Text>
     </Pressable>
   );
 }

@@ -658,3 +658,46 @@ export function useCancelTask(issueId: string) {
     },
   });
 }
+
+/**
+ * Re-run a terminal agent task on an issue. Passes `taskId` so the server
+ * restarts the agent that owned that run (not the issue's current assignee).
+ * Mirrors web's `api.rerunIssue` used by execution-log Retry and agent-
+ * failure comment Retry (`packages/views/issues/components/`).
+ *
+ * No optimistic insert — the new task arrives via WS `task:queued` which
+ * already invalidates the same task query keys. We still invalidate on
+ * settle so a WS miss still refreshes Active/Past within one RTT.
+ */
+export function useRerunTask(issueId: string) {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+
+  return useMutation({
+    mutationFn: (taskId: string) => api.rerunIssue(issueId, taskId),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: issueKeys.activeTasks(wsId, issueId) });
+      qc.invalidateQueries({ queryKey: issueKeys.tasks(wsId, issueId) });
+      qc.invalidateQueries({ queryKey: issueKeys.timeline(wsId, issueId) });
+    },
+  });
+}
+
+/**
+ * Localize re-run failures. MUL-4525 gates invoke permission with a
+ * structured `reason_code`; a 403 with `invocation_not_allowed` is a
+ * permission block, not a transient error. Mobile owns its own ApiError
+ * class so we can't reuse core's `dispatchReasonCode` instanceof check.
+ */
+export function rerunErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "body" in err) {
+    const body = (err as { body?: unknown }).body;
+    if (body && typeof body === "object") {
+      const code = (body as { reason_code?: unknown }).reason_code;
+      if (code === "invocation_not_allowed") {
+        return "You don't have permission to run this agent.";
+      }
+    }
+  }
+  return err instanceof Error ? err.message : "Couldn't restart the agent.";
+}

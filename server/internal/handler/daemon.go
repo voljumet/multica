@@ -30,6 +30,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
+	"github.com/multica-ai/multica/server/pkg/providerlimits"
 	"github.com/multica-ai/multica/server/pkg/redact"
 )
 
@@ -3476,8 +3477,68 @@ func (h *Handler) FailTask(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("fail task: failed to revoke task tokens", "task_id", uuidToString(task.ID), "error", err)
 	}
 
+	// Best-effort: if the error is a Claude subscription plan-limit hit
+	// (session / weekly / Opus), stamp metadata.provider_limits on the
+	// owning runtime so the runtime detail UI can show the reset window.
+	// Never fails the HTTP response — the task is already terminal.
+	h.recordProviderLimitsFromTaskError(r.Context(), *task, req.Error)
+
 	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.AgentID), "task_error", req.Error, "failure_reason", req.FailureReason)
 	writeJSON(w, http.StatusOK, taskToResponse(*task, workspaceID))
+}
+
+// recordProviderLimitsFromTaskError parses a plan-limit failure message and,
+// when recognized, writes agent_runtime.metadata.provider_limits then
+// publishes daemon:register so open runtime pages refetch. All errors are
+// logged and swallowed — this is observational, not on the critical path.
+func (h *Handler) recordProviderLimitsFromTaskError(ctx context.Context, task db.AgentTaskQueue, errMsg string) {
+	agent, err := h.Queries.GetAgent(ctx, task.AgentID)
+	if err != nil {
+		slog.Debug("provider_limits: load agent failed", "agent_id", uuidToString(task.AgentID), "error", err)
+		return
+	}
+	if !agent.RuntimeID.Valid {
+		return
+	}
+
+	rt, err := h.Queries.GetAgentRuntime(ctx, agent.RuntimeID)
+	if err != nil {
+		slog.Debug("provider_limits: load runtime failed", "runtime_id", uuidToString(agent.RuntimeID), "error", err)
+		return
+	}
+
+	snap := providerlimits.ParseFromError(rt.Provider, errMsg, time.Now())
+	if snap == nil {
+		return
+	}
+
+	payload, err := json.Marshal(snap)
+	if err != nil {
+		slog.Warn("provider_limits: marshal snapshot failed", "error", err)
+		return
+	}
+
+	updated, err := h.Queries.SetAgentRuntimeProviderLimits(ctx, db.SetAgentRuntimeProviderLimitsParams{
+		ID:             rt.ID,
+		ProviderLimits: payload,
+	})
+	if err != nil {
+		slog.Warn("provider_limits: write failed",
+			"runtime_id", uuidToString(rt.ID),
+			"error", err)
+		return
+	}
+
+	// Same event the rename/update path uses so runtime list + detail
+	// invalidate without inventing a new event type.
+	h.publish(protocol.EventDaemonRegister, uuidToString(updated.WorkspaceID), "member", "", map[string]any{
+		"action": "update",
+	})
+	slog.Info("provider_limits: recorded plan-limit hit",
+		"runtime_id", uuidToString(rt.ID),
+		"provider", snap.Provider,
+		"status", snap.Status,
+		"windows", len(snap.Windows))
 }
 
 // ---------------------------------------------------------------------------

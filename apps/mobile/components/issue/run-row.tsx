@@ -3,20 +3,25 @@
  * (`app/(app)/[workspace]/issue/[id]/runs.tsx`). Same component for active
  * and past tasks —
  * the trailing Cancel button is conditional on `status in {queued,
- * dispatched, running, waiting_local_directory}`, and the status badge /
- * colour swaps based on the AgentTask.status enum.
+ * dispatched, running, waiting_local_directory}`, Retry on failed /
+ * cancelled (web Execution Log parity), and the status badge / colour
+ * swaps based on the AgentTask.status enum.
  *
  * Tapping the row opens the per-task transcript
  * (`issue/[id]/runs/[taskId]`) — live while the task is active, historical
- * once terminal. Cancel stays a separate control so a mis-tap on Stop
- * doesn't open the log.
+ * once terminal. Cancel / Retry stay separate controls so a mis-tap on
+ * Stop doesn't open the log.
  */
 import { Alert, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import type { AgentTask, TaskFailureReason } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
-import { useCancelTask } from "@/data/mutations/issues";
+import {
+  rerunErrorMessage,
+  useCancelTask,
+  useRerunTask,
+} from "@/data/mutations/issues";
 import { useActorLookup } from "@/data/use-actor-name";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { timeAgo } from "@/lib/time-ago";
@@ -37,6 +42,12 @@ export function RunRow({ task, issueId }: Props) {
   const { getName } = useActorLookup();
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const isActive = ACTIVE_STATUSES.includes(task.status);
+  // Retry only for terminal-but-not-success rows — matches web
+  // `PastRow.canRetry` in packages/views/issues/components/execution-log-section.tsx.
+  // Passing task.id targets this row's agent so a reassignment / @-mention
+  // agent is not displaced by the issue's current assignee.
+  const canRetry =
+    task.status === "failed" || task.status === "cancelled";
   const summary = task.trigger_summary?.trim() || fallbackSummary(task);
   // Past tasks use completed_at when present (server fills it for terminal
   // statuses); active tasks fall back to created_at so the user sees how
@@ -79,7 +90,11 @@ export function RunRow({ task, issueId }: Props) {
           </View>
         </View>
       </Pressable>
-      {isActive ? <CancelButton taskId={task.id} issueId={issueId} /> : null}
+      {isActive ? (
+        <CancelButton taskId={task.id} issueId={issueId} />
+      ) : canRetry ? (
+        <RetryButton taskId={task.id} issueId={issueId} />
+      ) : null}
     </View>
   );
 }
@@ -131,8 +146,42 @@ function CancelButton({
       onPress={onPress}
       disabled={mutation.isPending}
       className="px-3 py-1.5 rounded-md bg-secondary active:opacity-70"
+      accessibilityRole="button"
+      accessibilityLabel="Cancel task"
     >
       <Text className="text-xs font-medium text-foreground">Cancel</Text>
+    </Pressable>
+  );
+}
+
+function RetryButton({
+  taskId,
+  issueId,
+}: {
+  taskId: string;
+  issueId: string;
+}) {
+  const mutation = useRerunTask(issueId);
+
+  const onPress = () => {
+    mutation.mutate(taskId, {
+      onError: (err) => {
+        Alert.alert("Couldn't re-run", rerunErrorMessage(err));
+      },
+    });
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={mutation.isPending}
+      className="px-3 py-1.5 rounded-md bg-secondary active:opacity-70"
+      accessibilityRole="button"
+      accessibilityLabel="Retry this run"
+    >
+      <Text className="text-xs font-medium text-foreground">
+        {mutation.isPending ? "Retrying…" : "Retry"}
+      </Text>
     </Pressable>
   );
 }

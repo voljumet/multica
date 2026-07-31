@@ -441,5 +441,24 @@
     "table_cache_r": "Cache R",
     "table_cache_w": "Cache W",
     "no_data": "No usage data yet"
+  },
+  "provider_limits": {
+    "title": "Provider limits",
+    "empty": "Limit status is not reported for this runtime yet. It appears here when an agent hits a plan limit (for example Claude’s 5-hour window).",
+    "status_exhausted": "Plan limit hit",
+    "status_unknown": "Limit status is unclear for this runtime.",
+    "window_five_hour": "5-hour window",
+    "window_seven_day": "Weekly window",
+    "window_opus": "Opus limit",
+    "window_unknown": "Limit",
+    "used_pct": "{{pct}}% used",
+    "resets_at_label": "Resets {{when}}",
+    "resets_soon": "Reset is due",
+    "resets_in_minutes": "Resets in {{count}}m",
+    "resets_in_hours": "Resets in {{count}}h",
+    "resets_in_hours_mins": "Resets in {{hours}}h {{minutes}}m",
+    "source_task_error": "from a failed task",
+    "source_probe": "from a live probe",
+    "seen_hint": "Seen {{when}} · {{source}}"
   }
 }

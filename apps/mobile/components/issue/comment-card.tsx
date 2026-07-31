@@ -23,7 +23,7 @@
  * user keeps the "this thread is resolved" signal even while reading.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Alert, Pressable, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -42,7 +42,9 @@ import { Markdown } from "@/lib/markdown";
 import { CommentAttachmentList } from "@/components/issue/comment-attachment-list";
 import {
   discardFailedComment,
+  rerunErrorMessage,
   useCreateComment,
+  useRerunTask,
   useToggleCommentReaction,
 } from "@/data/mutations/issues";
 import { useAuthStore } from "@/data/auth-store";
@@ -503,6 +505,14 @@ function CommentBody({
         attachments={entry.attachments}
         content={entry.content}
       />
+      {/* Agent-failure system comments carry source_task_id so operators can
+       *  re-run that exact task (web TaskCommentRetryButton parity). */}
+      {retryableAgentFailureComment(entry) ? (
+        <TaskCommentRetryButton
+          issueId={issueId}
+          taskId={entry.source_task_id}
+        />
+      ) : null}
       {failed ? (
         <FailedActions
           error={failed.error}
@@ -574,5 +584,67 @@ function FailedActions({
         </Text>
       </Pressable>
     </View>
+  );
+}
+
+/**
+ * Agent-failure system comments are written by the runtime when a task
+ * ends failed/cancelled. They carry `source_task_id` so operators can
+ * re-run that exact task. Predicate mirrors web
+ * `retryableAgentFailureComment` in packages/views/issues/components/comment-card.tsx.
+ */
+function retryableAgentFailureComment(
+  entry: TimelineEntry,
+): entry is TimelineEntry & { source_task_id: string } {
+  return (
+    entry.actor_type === "agent" &&
+    entry.comment_type === "system" &&
+    typeof entry.source_task_id === "string" &&
+    entry.source_task_id.length > 0
+  );
+}
+
+/**
+ * Compact Retry control under an agent-failure system comment. Fires
+ * `POST /api/issues/:id/rerun` with the comment's source_task_id — same
+ * endpoint as the runs list Retry button.
+ */
+function TaskCommentRetryButton({
+  issueId,
+  taskId,
+}: {
+  issueId: string;
+  taskId: string;
+}) {
+  const mutation = useRerunTask(issueId);
+  const { colorScheme } = useColorScheme();
+  const mutedFg = THEME[colorScheme].mutedForeground;
+
+  const onPress = () => {
+    mutation.mutate(taskId, {
+      onError: (err) => {
+        Alert.alert("Couldn't re-run", rerunErrorMessage(err));
+      },
+    });
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={mutation.isPending}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel="Retry this agent run"
+      className="self-start flex-row items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-border bg-background active:opacity-70"
+    >
+      <Ionicons
+        name="refresh"
+        size={14}
+        color={mutedFg}
+      />
+      <Text className="text-xs font-medium text-foreground">
+        {mutation.isPending ? "Retrying…" : "Retry"}
+      </Text>
+    </Pressable>
   );
 }

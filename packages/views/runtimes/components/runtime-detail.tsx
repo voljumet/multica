@@ -43,6 +43,7 @@ import { availabilityConfig, workloadConfig } from "../../agents/presence";
 import { HealthBadge } from "./shared";
 import { ProviderLogo } from "./provider-logo";
 import { UsageSection } from "./usage-section";
+import { ProviderLimitsSection } from "./provider-limits-section";
 import { DeleteRuntimeDialog } from "./delete-runtime-dialog";
 import { DeleteRuntimeProfileDialog } from "./delete-runtime-profile-dialog";
 import { useT, useTimeAgo } from "../../i18n";
@@ -188,6 +189,7 @@ export function RuntimeDetail({
               cliVersion={cliVersion}
               daemonShort={daemonShort}
             />
+            <ProviderLimitsSection runtime={runtime} />
             <UsageSection runtime={runtime} />
           </div>
 
