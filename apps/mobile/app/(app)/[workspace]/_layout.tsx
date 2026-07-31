@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ComponentProps } from "react";
 import { Redirect, Stack, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +14,9 @@ import { usePinsRealtime } from "@/data/realtime/use-pins-realtime";
 import { usePresenceRealtime } from "@/data/realtime/use-presence-realtime";
 import { useWorkspacePresencePrefetch } from "@/lib/use-workspace-presence-prefetch";
 import { ModalCloseButton } from "@/components/ui/modal-close-button";
+import * as SecureStore from "expo-secure-store";
+import { registerForPushNotifications } from "@/lib/push-notifications";
+import { api } from "@/data/api";
 import { useNewIssueDraftResetOnWorkspaceChange } from "@/data/stores/new-issue-draft-store";
 import { useNewProjectDraftResetOnWorkspaceChange } from "@/data/stores/new-project-draft-store";
 import { useChatSessionPickerResetOnWorkspaceChange } from "@/data/stores/chat-session-picker-store";
@@ -111,6 +114,31 @@ export default function WorkspaceLayout() {
       setCurrentWorkspace(matched.id, matched.slug);
     }
   }, [matched, setCurrentWorkspace]);
+
+  // Register for push notifications once per workspace session.
+  // Guard with a ref to prevent re-registration on re-renders.
+  const pushRegisteredRef = useRef(false);
+
+  useEffect(() => {
+    if (!matched || pushRegisteredRef.current) return;
+    pushRegisteredRef.current = true;
+
+    void (async () => {
+      try {
+        const token = await registerForPushNotifications();
+        if (!token) return;
+
+        const stored = await SecureStore.getItemAsync("push-token");
+        if (stored === token) return; // unchanged, skip re-registration
+
+        await api.registerPushToken(token);
+        await SecureStore.setItemAsync("push-token", token);
+      } catch (err) {
+        // Non-critical — log and continue. Push is a best-effort channel.
+        console.warn("[push] registration failed", err);
+      }
+    })();
+  }, [matched]);
 
   // Wipe cross-route Zustand draft stores whenever the active workspace
   // changes — a draft picked under workspace A (assignee id, draft

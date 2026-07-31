@@ -443,6 +443,16 @@ class ApiClient {
     );
   }
 
+  // --- Push tokens ---
+  // Fire-and-forget write: no response body consumed. Push registration is
+  // non-critical — callers catch and console.warn on failure.
+  async registerPushToken(token: string): Promise<void> {
+    await this.fetch("/api/push-tokens", {
+      method: "POST",
+      body: JSON.stringify({ token, platform: "expo" }),
+    });
+  }
+
   // --- Workspaces ---
   async listWorkspaces(opts?: {
     signal?: AbortSignal;
