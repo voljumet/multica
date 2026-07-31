@@ -182,7 +182,7 @@ type DaemonRegisterRequest struct {
 	DeviceName      string   `json:"device_name"`
 	CLIVersion      string   `json:"cli_version"` // multica CLI version
 	LaunchedBy      string   `json:"launched_by"` // "desktop" when spawned by the Electron app
-	Runtimes        []struct {
+	Runtimes []struct {
 		Name    string `json:"name"`
 		Type    string `json:"type"`
 		Version string `json:"version"` // agent CLI version (claude/codex)
@@ -192,6 +192,19 @@ type DaemonRegisterRequest struct {
 		// Type carries the protocol family for both built-in and custom rows
 		// so task routing (agent.New) is unchanged.
 		ProfileID string `json:"profile_id"`
+		// Optional non-secret CLI login identity (e.g. Claude oauth email).
+		// Older daemons omit these fields; zero values leave provider_account
+		// out of metadata. User-authored description is a separate metadata
+		// key and is never written here.
+		AccountEmail       string `json:"account_email"`
+		AccountDisplayName string `json:"account_display_name"`
+		AccountOrgName     string `json:"account_org_name"`
+		AccountOrgType     string `json:"account_org_type"`
+		AccountAuthMode    string `json:"account_auth_mode"`
+		AccountKeyHint     string `json:"account_key_hint"`
+		// Comma-separated provider ids for multi-provider CLIs (OpenCode).
+		AccountProviders string `json:"account_providers"`
+		AccountSource    string `json:"account_source"`
 	} `json:"runtimes"`
 	FailedProfiles []struct {
 		ProfileID   string `json:"profile_id"`
@@ -458,11 +471,24 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		if runtime.Status == "offline" {
 			status = "offline"
 		}
-		metadata, _ := json.Marshal(map[string]any{
+		meta := map[string]any{
 			"version":     runtime.Version,
 			"cli_version": req.CLIVersion,
 			"launched_by": req.LaunchedBy,
-		})
+		}
+		if acct := providerAccountFromRegister(
+			runtime.AccountEmail,
+			runtime.AccountDisplayName,
+			runtime.AccountOrgName,
+			runtime.AccountOrgType,
+			runtime.AccountAuthMode,
+			runtime.AccountKeyHint,
+			runtime.AccountProviders,
+			runtime.AccountSource,
+		); acct != nil {
+			meta["provider_account"] = acct
+		}
+		metadata, _ := json.Marshal(meta)
 
 		var registered db.AgentRuntime
 		var inserted bool
@@ -3746,6 +3772,62 @@ func (h *Handler) failTask(w http.ResponseWriter, r *http.Request, taskID, works
 
 	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.AgentID), "task_error", req.Error, "failure_reason", req.FailureReason)
 	writeJSON(w, http.StatusOK, taskToResponse(*task, workspaceID))
+}
+
+// providerAccountFromRegister builds the non-secret login identity blob
+// stored at metadata.provider_account. Returns nil when the daemon sent
+// nothing useful (older daemons, unauthenticated providers).
+// User-authored description is NOT included — it lives at
+// metadata.provider_account_description and is only set via PATCH.
+func providerAccountFromRegister(
+	email, displayName, orgName, orgType, authMode, keyHint, providersCSV, source string,
+) map[string]any {
+	email = strings.TrimSpace(email)
+	displayName = strings.TrimSpace(displayName)
+	orgName = strings.TrimSpace(orgName)
+	orgType = strings.TrimSpace(orgType)
+	authMode = strings.TrimSpace(authMode)
+	keyHint = strings.TrimSpace(keyHint)
+	source = strings.TrimSpace(source)
+
+	var providers []string
+	for _, p := range strings.Split(providersCSV, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			providers = append(providers, p)
+		}
+	}
+
+	if email == "" && displayName == "" && orgName == "" &&
+		authMode == "" && keyHint == "" && len(providers) == 0 {
+		return nil
+	}
+	if source == "" {
+		source = "daemon"
+	}
+	out := map[string]any{"source": source}
+	if email != "" {
+		out["email"] = email
+	}
+	if displayName != "" {
+		out["display_name"] = displayName
+	}
+	if orgName != "" {
+		out["org_name"] = orgName
+	}
+	if orgType != "" {
+		out["org_type"] = orgType
+	}
+	if authMode != "" {
+		out["auth_mode"] = authMode
+	}
+	if keyHint != "" {
+		out["key_hint"] = keyHint
+	}
+	if len(providers) > 0 {
+		out["providers"] = providers
+	}
+	return out
 }
 
 // recordProviderLimitsFromTaskError parses a plan-limit failure message and,

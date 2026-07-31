@@ -194,7 +194,10 @@ export function RuntimeDetail({
               cliVersion={cliVersion}
               daemonShort={daemonShort}
             />
-            <ProviderLimitsSection runtime={runtime} />
+            <ProviderLimitsSection
+              runtime={runtime}
+              canEdit={!!canEditRuntime}
+            />
             <UsageSection runtime={runtime} />
           </div>
 

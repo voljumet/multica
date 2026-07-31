@@ -2141,12 +2141,19 @@ func (d *Daemon) detectBuiltinRuntimes(ctx context.Context) ([]map[string]string
 		if d.cfg.DeviceName != "" {
 			displayName = fmt.Sprintf("%s (%s)", displayName, d.cfg.DeviceName)
 		}
-		runtimes = append(runtimes, map[string]string{
+		rt := map[string]any{
 			"name":    displayName,
 			"type":    r.name,
 			"version": r.version,
 			"status":  "online",
-		})
+		}
+		// Best-effort login identity (email / org). Non-secret local config
+		// only — used so multi-account workspaces can see which login is
+		// maxed on the provider-limits card.
+		if acct := resolveProviderAccount(name); acct != nil {
+			applyProviderAccountToRegister(rt, acct)
+		}
+		runtimes = append(runtimes, rt)
 	}
 	return runtimes, belowMin, unavailable
 }
@@ -2364,7 +2371,7 @@ func (d *Daemon) registerBuiltinRuntimesForWorkspaceLocked(ctx context.Context, 
 // that as "unknown, do not overwrite a previously-stored signature" (otherwise
 // a transient 5xx would silently flip the daemon into thinking the workspace
 // has zero profiles).
-func (d *Daemon) appendProfileRuntimes(ctx context.Context, workspaceID string, runtimes *[]map[string]string, failedProfiles *[]map[string]string) string {
+func (d *Daemon) appendProfileRuntimes(ctx context.Context, workspaceID string, runtimes *[]map[string]any, failedProfiles *[]map[string]string) string {
 	resp, err := d.client.GetRuntimeProfiles(ctx, workspaceID)
 	if err != nil {
 		// Best-effort: never fail registration because profiles couldn't be
@@ -2457,13 +2464,19 @@ func (d *Daemon) appendProfileRuntimes(ctx context.Context, workspaceID string, 
 		d.logger.Info("registering custom runtime profile",
 			"workspace_id", workspaceID, "profile_id", profile.ID,
 			"protocol_family", profile.ProtocolFamily, "command_path", resolved)
-		*runtimes = append(*runtimes, map[string]string{
+		rt := map[string]any{
 			"name":       displayName,
 			"type":       profile.ProtocolFamily,
 			"version":    version,
 			"status":     "online",
 			"profile_id": profile.ID,
-		})
+		}
+		// Custom profiles route through a protocol family; if that family
+		// is Claude, surface the same host-level Claude login identity.
+		if acct := resolveProviderAccount(profile.ProtocolFamily); acct != nil {
+			applyProviderAccountToRegister(rt, acct)
+		}
+		*runtimes = append(*runtimes, rt)
 	}
 	return profileSetSignature(resp.RuntimeProfiles)
 }

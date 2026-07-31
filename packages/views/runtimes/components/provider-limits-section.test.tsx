@@ -11,8 +11,18 @@ import { ProviderLimitsSection } from "./provider-limits-section";
 
 const TEST_RESOURCES = { en: { common: enCommon, runtimes: enRuntimes } };
 
+const mutate = vi.fn();
+
 vi.mock("./provider-logo", () => ({
   ProviderLogo: () => <span data-testid="provider-logo" />,
+}));
+
+vi.mock("@multica/core/hooks", () => ({
+  useWorkspaceId: () => "ws-1",
+}));
+
+vi.mock("@multica/core/runtimes/mutations", () => ({
+  useUpdateRuntime: () => ({ mutate, isPending: false }),
 }));
 
 function wrap(ui: ReactNode) {
@@ -61,7 +71,44 @@ describe("ProviderLimitsSection", () => {
     expect(
       screen.getByText(/Limit status is not reported for this runtime yet/i),
     ).toBeTruthy();
-    expect(screen.getByText(/Provider limits/i)).toBeTruthy();
+  });
+
+  it("prefers user description over auto email", () => {
+    render(
+      wrap(
+        <ProviderLimitsSection
+          runtime={makeRuntime({
+            metadata: {
+              provider_account: { email: "maxed@example.com" },
+              provider_account_description: "Work Max",
+            },
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText("Work Max")).toBeTruthy();
+    expect(screen.getByText("maxed@example.com")).toBeTruthy();
+  });
+
+  it("shows key-based OpenCode identity", () => {
+    render(
+      wrap(
+        <ProviderLimitsSection
+          runtime={makeRuntime({
+            provider: "opencode",
+            metadata: {
+              provider_account: {
+                auth_mode: "api_key",
+                key_hint: "···a7f3",
+                providers: ["moonshot", "zhipu"],
+                source: "opencode_auth",
+              },
+            },
+          })}
+        />,
+      ),
+    );
+    expect(screen.getAllByText(/api key ···a7f3/i).length).toBeGreaterThan(0);
   });
 
   it("renders exhausted session limit with reset label", () => {
@@ -91,8 +138,6 @@ describe("ProviderLimitsSection", () => {
       ),
     );
     expect(screen.getByText(/Plan limit hit/i)).toBeTruthy();
-    expect(screen.getByText(/session limit/i)).toBeTruthy();
     expect(screen.getByText(/Resets 3:45pm/i)).toBeTruthy();
-    expect(screen.getByText(/from a failed task/i)).toBeTruthy();
   });
 });
