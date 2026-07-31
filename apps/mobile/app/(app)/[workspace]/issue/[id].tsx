@@ -21,6 +21,7 @@ import {
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import type { Issue } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,8 @@ import {
 import { useDeleteIssue } from "@/data/mutations/issues";
 import { pinListOptions } from "@/data/queries/pins";
 import { useCreatePin, useDeletePin } from "@/data/mutations/pins";
+import { subscribersOptions } from "@/data/queries/subscribers";
+import { useToggleSubscription } from "@/data/mutations/subscribers";
 import { useAuthStore } from "@/data/auth-store";
 import { useIssueRealtime } from "@/data/realtime/use-issue-realtime";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -97,8 +100,26 @@ export default function IssueDetail() {
 
   const issue = detail.data;
   const deleteIssue = useDeleteIssue();
-  const userId = useAuthStore((s) => s.user?.id ?? null);
+  const user = useAuthStore((s) => s.user);
+  const userId = user?.id ?? null;
   const { data: pins } = useQuery(pinListOptions(wsId, userId));
+  const subscribers = useQuery(subscribersOptions(id));
+  const toggleSubscription = useToggleSubscription(id);
+
+  const isSubscribed =
+    subscribers.data?.some(
+      (s) => s.user_id === user?.id && s.user_type === "member",
+    ) ?? false;
+
+  const onToggleSubscription = useCallback(() => {
+    if (!user) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    toggleSubscription.mutate({
+      userId: user.id,
+      userType: "member",
+      subscribed: isSubscribed,
+    });
+  }, [user, toggleSubscription, isSubscribed]);
   const isPinned =
     !!issue &&
     !!pins?.some((p) => p.item_type === "issue" && p.item_id === issue.id);
@@ -166,6 +187,17 @@ export default function IssueDetail() {
                    *  active tasks, so it doesn't crowd the header in the
                    *  common case. See agent-header-badge.tsx. */}
                   <AgentHeaderBadge issueId={id} />
+                  {user && (
+                    <IconButton
+                      name={
+                        isSubscribed ? "notifications" : "notifications-outline"
+                      }
+                      onPress={onToggleSubscription}
+                      accessibilityLabel={
+                        isSubscribed ? "Unfollow issue" : "Follow issue"
+                      }
+                    />
+                  )}
                   <IconButton
                     name="ellipsis-horizontal"
                     onPress={onPressMore}

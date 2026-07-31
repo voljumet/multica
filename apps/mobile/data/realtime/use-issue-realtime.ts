@@ -14,6 +14,8 @@
  *     issue:updated, so we refetch the authoritative detail too)
  *   - task:message → append into shared `["task-messages", taskId]` cache
  *     (same key chat uses) so the issue Agent Runs transcript grows live
+ *   - subscriber:added / subscriber:removed → invalidate subscriber list
+ *     so the bell icon reflects real-time subscribe/unsubscribe by other clients
  *   - reconnect → invalidate detail + timeline (we might've missed events
  *     while disconnected; server has no replay buffer for this client)
  *
@@ -35,6 +37,7 @@ import type {
   TaskQueuedPayload,
 } from "@multica/core/types";
 import { issueKeys } from "@/data/queries/issue-keys";
+import { subscriberKeys } from "@/data/queries/subscribers";
 import { useWSSubscriptions } from "@/lib/use-ws-subscriptions";
 import { appendTaskMessage } from "./chat-ws-updaters";
 import {
@@ -233,6 +236,16 @@ export function useIssueRealtime(
         ws.on("task:message", (payload: TaskMessagePayload) => {
           if (payload.issue_id !== issueId) return;
           appendTaskMessage(qc, payload);
+        }),
+
+        // ----- Subscribers -----
+        ws.on("subscriber:added", (payload) => {
+          if (payload.issue_id !== issueId) return;
+          qc.invalidateQueries({ queryKey: subscriberKeys.all(issueId) });
+        }),
+        ws.on("subscriber:removed", (payload) => {
+          if (payload.issue_id !== issueId) return;
+          qc.invalidateQueries({ queryKey: subscriberKeys.all(issueId) });
         }),
 
         // ----- Reconnect -----
