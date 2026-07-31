@@ -422,12 +422,20 @@ type UpdateAgentRuntimeRequest struct {
 	// runtime per provider) instead of just this one. Ignored when the
 	// runtime has no daemon_id.
 	ApplyToMachine bool `json:"apply_to_machine,omitempty"`
+	// ProviderAccountDescription is a user-authored label for the CLI login
+	// / API key on this runtime (e.g. "Work Max", "z.ai personal"). Empty
+	// string clears it. Stored at metadata.provider_account_description so
+	// daemon re-register cannot overwrite it.
+	ProviderAccountDescription *string `json:"provider_account_description,omitempty"`
 }
 
 // maxRuntimeCustomNameLen caps a runtime's custom name. Default names are
 // short (e.g. "Claude (host.local)"); 100 chars is generous headroom while
 // keeping the picker rows and machine headers from overflowing.
 const maxRuntimeCustomNameLen = 100
+
+// maxProviderAccountDescriptionLen caps the manual account label.
+const maxProviderAccountDescriptionLen = 120
 
 // UpdateAgentRuntime handles PATCH /api/runtimes/:id. Currently visibility
 // is editable; the request shape is open-ended so future fields (display
@@ -482,6 +490,13 @@ func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
 	if req.CustomName != nil {
 		if len([]rune(strings.TrimSpace(*req.CustomName))) > maxRuntimeCustomNameLen {
 			writeError(w, http.StatusBadRequest, "custom name is too long")
+			return
+		}
+	}
+
+	if req.ProviderAccountDescription != nil {
+		if len([]rune(strings.TrimSpace(*req.ProviderAccountDescription))) > maxProviderAccountDescriptionLen {
+			writeError(w, http.StatusBadRequest, "account description is too long")
 			return
 		}
 	}
@@ -549,6 +564,20 @@ func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
 			rt = updated
 			changed = true
 		}
+	}
+
+	if req.ProviderAccountDescription != nil {
+		updated, err := h.Queries.SetAgentRuntimeProviderAccountDescription(r.Context(), db.SetAgentRuntimeProviderAccountDescriptionParams{
+			ID:          runtimeUUID,
+			Description: strings.TrimSpace(*req.ProviderAccountDescription),
+		})
+		if err != nil {
+			slog.Error("SetAgentRuntimeProviderAccountDescription failed", "error", err, "runtime_id", runtimeID)
+			writeError(w, http.StatusInternalServerError, "failed to update runtime")
+			return
+		}
+		rt = updated
+		changed = true
 	}
 
 	if changed {

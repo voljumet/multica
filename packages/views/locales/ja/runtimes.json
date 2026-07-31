@@ -430,6 +430,7 @@
   "provider_limits": {
     "title": "Provider 上限",
     "empty": "このランタイムにはまだ上限ステータスがありません。エージェントがプラン上限（例: Claude の 5 時間ウィンドウ）に達するとここに表示されます。",
+    "empty_with_account": "{{account}} でサインイン中。このログインでプラン上限に達するとここに表示されます。",
     "status_exhausted": "プラン上限に達しました",
     "status_unknown": "このランタイムの上限ステータスは不明です。",
     "window_five_hour": "5 時間ウィンドウ",
@@ -444,6 +445,17 @@
     "resets_in_hours_mins": "{{hours}} 時間 {{minutes}} 分後にリセット",
     "source_task_error": "失敗したタスクから",
     "source_probe": "ライブプローブから",
-    "seen_hint": "{{when}} に確認 · {{source}}"
+    "seen_hint": "{{when}} に確認 · {{source}}",
+    "add_description": "ラベルを追加",
+    "edit_description_aria": "アカウントラベルを編集",
+    "description_dialog_title": "アカウントラベル",
+    "description_dialog_hint": "このログインまたは API キーに名前を付けて区別します（例: Work Max、z.ai personal）。ランタイムに保存され、シークレット自体は保存しません。",
+    "description_placeholder": "例: Work Max",
+    "description_saved": "アカウントラベルを保存しました",
+    "description_cleared": "アカウントラベルを削除しました",
+    "description_save_failed": "アカウントラベルを保存できませんでした",
+    "clear_description": "削除",
+    "cancel": "キャンセル",
+    "save": "保存"
   }
 }

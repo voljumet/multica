@@ -152,6 +152,27 @@ SET
 WHERE id = sqlc.arg('id')
 RETURNING *;
 
+-- name: SetAgentRuntimeProviderAccountDescription :one
+-- Sets or clears the user-authored account label on a runtime. Empty /
+-- whitespace description removes the key so the UI falls back to auto
+-- identity (email / key hint). Stored separately from provider_account so
+-- daemon re-register cannot clobber it.
+UPDATE agent_runtime
+SET
+    metadata = CASE
+        WHEN btrim(COALESCE(sqlc.arg('description')::text, '')) = ''
+        THEN COALESCE(metadata, '{}'::jsonb) - 'provider_account_description'
+        ELSE jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            '{provider_account_description}',
+            to_jsonb(btrim(sqlc.arg('description')::text)),
+            true
+        )
+    END,
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+RETURNING *;
+
 -- name: UpdateAgentRuntimeVisibility :one
 -- Toggles a runtime between 'private' (only owner can bind agents) and
 -- 'public' (any workspace member can). Default for new rows is 'private'

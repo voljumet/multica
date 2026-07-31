@@ -1046,6 +1046,58 @@ func (q *Queries) SetAgentRuntimeOffline(ctx context.Context, id pgtype.UUID) er
 	return err
 }
 
+const setAgentRuntimeProviderAccountDescription = `-- name: SetAgentRuntimeProviderAccountDescription :one
+UPDATE agent_runtime
+SET
+    metadata = CASE
+        WHEN btrim(COALESCE($1::text, '')) = ''
+        THEN COALESCE(metadata, '{}'::jsonb) - 'provider_account_description'
+        ELSE jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            '{provider_account_description}',
+            to_jsonb(btrim($1::text)),
+            true
+        )
+    END,
+    updated_at = now()
+WHERE id = $2
+RETURNING id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name
+`
+
+type SetAgentRuntimeProviderAccountDescriptionParams struct {
+	Description string      `json:"description"`
+	ID          pgtype.UUID `json:"id"`
+}
+
+// Sets or clears the user-authored account label on a runtime. Empty /
+// whitespace description removes the key so the UI falls back to auto
+// identity (email / key hint). Stored separately from provider_account so
+// daemon re-register cannot clobber it.
+func (q *Queries) SetAgentRuntimeProviderAccountDescription(ctx context.Context, arg SetAgentRuntimeProviderAccountDescriptionParams) (AgentRuntime, error) {
+	row := q.db.QueryRow(ctx, setAgentRuntimeProviderAccountDescription, arg.Description, arg.ID)
+	var i AgentRuntime
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.DaemonID,
+		&i.Name,
+		&i.RuntimeMode,
+		&i.Provider,
+		&i.Status,
+		&i.DeviceInfo,
+		&i.Metadata,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OwnerID,
+		&i.LegacyDaemonID,
+		&i.Visibility,
+		&i.ProfileID,
+		&i.CustomName,
+	)
+	return i, err
+}
+
 const setAgentRuntimeProviderLimits = `-- name: SetAgentRuntimeProviderLimits :one
 UPDATE agent_runtime
 SET

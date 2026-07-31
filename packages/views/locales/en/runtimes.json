@@ -445,6 +445,7 @@
   "provider_limits": {
     "title": "Provider limits",
     "empty": "Limit status is not reported for this runtime yet. It appears here when an agent hits a plan limit (for example Claude’s 5-hour window).",
+    "empty_with_account": "Signed in as {{account}}. Limit status appears here when an agent hits a plan limit on this login.",
     "status_exhausted": "Plan limit hit",
     "status_unknown": "Limit status is unclear for this runtime.",
     "window_five_hour": "5-hour window",
@@ -459,6 +460,17 @@
     "resets_in_hours_mins": "Resets in {{hours}}h {{minutes}}m",
     "source_task_error": "from a failed task",
     "source_probe": "from a live probe",
-    "seen_hint": "Seen {{when}} · {{source}}"
+    "seen_hint": "Seen {{when}} · {{source}}",
+    "add_description": "Add a label",
+    "edit_description_aria": "Edit account label",
+    "description_dialog_title": "Account label",
+    "description_dialog_hint": "Name this login or API key so you can tell accounts apart (e.g. “Work Max”, “z.ai personal”). Stored on the runtime — not the secret itself.",
+    "description_placeholder": "e.g. Work Max",
+    "description_saved": "Account label saved",
+    "description_cleared": "Account label cleared",
+    "description_save_failed": "Could not save account label",
+    "clear_description": "Clear",
+    "cancel": "Cancel",
+    "save": "Save"
   }
 }

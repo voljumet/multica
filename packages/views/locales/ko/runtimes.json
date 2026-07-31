@@ -430,6 +430,7 @@
   "provider_limits": {
     "title": "Provider 한도",
     "empty": "이 런타임에는 아직 한도 상태가 없습니다. 에이전트가 요금제 한도(예: Claude 5시간 창)에 도달하면 여기에 표시됩니다.",
+    "empty_with_account": "{{account}}(으)로 로그인됨. 이 계정에서 요금제 한도에 도달하면 여기에 표시됩니다.",
     "status_exhausted": "요금제 한도 도달",
     "status_unknown": "이 런타임의 한도 상태가 불명확합니다.",
     "window_five_hour": "5시간 창",
@@ -444,6 +445,17 @@
     "resets_in_hours_mins": "{{hours}}시간 {{minutes}}분 후 초기화",
     "source_task_error": "실패한 작업에서",
     "source_probe": "실시간 프로브에서",
-    "seen_hint": "{{when}}에 확인 · {{source}}"
+    "seen_hint": "{{when}}에 확인 · {{source}}",
+    "add_description": "라벨 추가",
+    "edit_description_aria": "계정 라벨 편집",
+    "description_dialog_title": "계정 라벨",
+    "description_dialog_hint": "이 로그인 또는 API 키에 이름을 붙여 계정을 구분하세요(예: Work Max, z.ai personal). 런타임에 저장되며 비밀 값은 저장되지 않습니다.",
+    "description_placeholder": "예: Work Max",
+    "description_saved": "계정 라벨 저장됨",
+    "description_cleared": "계정 라벨 지워짐",
+    "description_save_failed": "계정 라벨을 저장할 수 없습니다",
+    "clear_description": "지우기",
+    "cancel": "취소",
+    "save": "저장"
   }
 }

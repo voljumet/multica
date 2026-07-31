@@ -1310,6 +1310,11 @@ export class ApiClient {
       custom_name?: string;
       /** Apply custom_name to every runtime on the same machine. */
       apply_to_machine?: boolean;
+      /**
+       * User-authored label for the CLI login / API key on this runtime.
+       * Empty string clears it. Survives daemon re-register.
+       */
+      provider_account_description?: string;
     },
   ): Promise<AgentRuntime> {
     return this.fetch(`/api/runtimes/${runtimeId}`, {

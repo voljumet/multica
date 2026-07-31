@@ -1222,7 +1222,9 @@ func (d *Daemon) customProfileLaunchForRuntime(runtimeID string) (profileLaunchS
 
 func (d *Daemon) registerRuntimesForWorkspace(ctx context.Context, workspaceID string) (*RegisterResponse, string, error) {
 	d.logger.Debug("registering runtimes for workspace", "workspace_id", workspaceID, "agent_count", len(d.cfg.Agents))
-	var runtimes []map[string]string
+	// map[string]any so optional nested fields (provider account identity)
+	// can ride on the same registration payload as the string fields.
+	var runtimes []map[string]any
 	var failedProfiles []map[string]string
 	for name, entry := range d.cfg.Agents {
 		// Self-heal a pinned executable path an in-place upgrade deleted
@@ -1246,12 +1248,19 @@ func (d *Daemon) registerRuntimesForWorkspace(ctx context.Context, workspaceID s
 		if d.cfg.DeviceName != "" {
 			displayName = fmt.Sprintf("%s (%s)", displayName, d.cfg.DeviceName)
 		}
-		runtimes = append(runtimes, map[string]string{
+		rt := map[string]any{
 			"name":    displayName,
 			"type":    name,
 			"version": version,
 			"status":  "online",
-		})
+		}
+		// Best-effort login identity (email / org). Non-secret local config
+		// only — used so multi-account workspaces can see which login is
+		// maxed on the provider-limits card.
+		if acct := resolveProviderAccount(name); acct != nil {
+			applyProviderAccountToRegister(rt, acct)
+		}
+		runtimes = append(runtimes, rt)
 	}
 
 	// Append any workspace custom runtime profiles whose command resolves on
@@ -1322,7 +1331,7 @@ func (d *Daemon) registerRuntimesForWorkspace(ctx context.Context, workspaceID s
 // that as "unknown, do not overwrite a previously-stored signature" (otherwise
 // a transient 5xx would silently flip the daemon into thinking the workspace
 // has zero profiles).
-func (d *Daemon) appendProfileRuntimes(ctx context.Context, workspaceID string, runtimes *[]map[string]string, failedProfiles *[]map[string]string) string {
+func (d *Daemon) appendProfileRuntimes(ctx context.Context, workspaceID string, runtimes *[]map[string]any, failedProfiles *[]map[string]string) string {
 	resp, err := d.client.GetRuntimeProfiles(ctx, workspaceID)
 	if err != nil {
 		// Best-effort: never fail registration because profiles couldn't be
@@ -1415,13 +1424,19 @@ func (d *Daemon) appendProfileRuntimes(ctx context.Context, workspaceID string, 
 		d.logger.Info("registering custom runtime profile",
 			"workspace_id", workspaceID, "profile_id", profile.ID,
 			"protocol_family", profile.ProtocolFamily, "command_path", resolved)
-		*runtimes = append(*runtimes, map[string]string{
+		rt := map[string]any{
 			"name":       displayName,
 			"type":       profile.ProtocolFamily,
 			"version":    version,
 			"status":     "online",
 			"profile_id": profile.ID,
-		})
+		}
+		// Custom profiles route through a protocol family; if that family
+		// is Claude, surface the same host-level Claude login identity.
+		if acct := resolveProviderAccount(profile.ProtocolFamily); acct != nil {
+			applyProviderAccountToRegister(rt, acct)
+		}
+		*runtimes = append(*runtimes, rt)
 	}
 	return profileSetSignature(resp.RuntimeProfiles)
 }
