@@ -21,6 +21,7 @@ import type {
   Comment,
   InboxItem,
   IssueLabelsResponse,
+  IssueSubscriber,
   Label,
   ListLabelsResponse,
   ListProjectResourcesResponse,
@@ -750,6 +751,19 @@ export const EMPTY_ISSUE_FALLBACK: import("@multica/core/types").Issue = {
   created_at: "",
   updated_at: "",
 };
+
+// --- Issue subscribers ---
+
+export const IssueSubscriberSchema: z.ZodType<IssueSubscriber> = z.object({
+  issue_id: z.string(),
+  user_type: z.enum(["member", "agent"]),
+  user_id: z.string(),
+  reason: z.enum(["creator", "assignee", "commenter", "mentioned", "manual"]),
+  created_at: z.string(),
+});
+
+export const IssueSubscribersSchema = z.array(IssueSubscriberSchema);
+export const EMPTY_SUBSCRIBERS: IssueSubscriber[] = [];
 
 // Helpers re-exported for ergonomic single-import at the call site.
 export type { Label, Project, ProjectResource };

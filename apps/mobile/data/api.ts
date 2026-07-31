@@ -28,6 +28,7 @@ import type {
   InboxItem,
   Issue,
   IssueLabelsResponse,
+  IssueSubscriber,
   Label,
   IssueReaction,
   ListIssuesParams,
@@ -119,6 +120,8 @@ import {
   EMPTY_TASK_MESSAGE_LIST,
   UserSchema,
   WorkspaceListSchema,
+  IssueSubscribersSchema,
+  EMPTY_SUBSCRIBERS,
 } from "./schemas";
 import type { ZodType } from "zod";
 import { getCurrentSlug } from "./workspace-store";
@@ -845,6 +848,31 @@ class ApiClient {
   // short-circuits 204 → undefined (api.ts:270), so no body parsing needed.
   async deleteIssue(id: string): Promise<void> {
     await this.fetch<void>(`/api/issues/${id}`, { method: "DELETE" });
+  }
+
+  // --- Issue subscribers ---
+
+  async listIssueSubscribers(
+    issueId: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<IssueSubscriber[]> {
+    return this.fetchValidated(
+      `/api/issues/${issueId}/subscribers`,
+      IssueSubscribersSchema,
+      EMPTY_SUBSCRIBERS,
+      { ...opts, endpoint: "GET /api/issues/:id/subscribers" },
+    );
+  }
+
+  // Write endpoints — bare this.fetch per convention: these are fire-and-forget
+  // POSTs with no consumed response body. The optimistic mutation handles local
+  // state; the settle invalidate reconciles with the server.
+  async subscribeToIssue(issueId: string): Promise<void> {
+    await this.fetch(`/api/issues/${issueId}/subscribe`, { method: "POST" });
+  }
+
+  async unsubscribeFromIssue(issueId: string): Promise<void> {
+    await this.fetch(`/api/issues/${issueId}/unsubscribe`, { method: "POST" });
   }
 
   // --- Labels ---
