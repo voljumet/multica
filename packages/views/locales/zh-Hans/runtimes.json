@@ -430,5 +430,24 @@
     "table_cache_r": "缓存读",
     "table_cache_w": "缓存写",
     "no_data": "还没有使用数据"
+  },
+  "provider_limits": {
+    "title": "Provider 限额",
+    "empty": "此 Runtime 尚未上报限额状态。当 Agent 触达套餐限额（例如 Claude 的 5 小时窗口）时会显示在这里。",
+    "status_exhausted": "已触达套餐限额",
+    "status_unknown": "此 Runtime 的限额状态尚不明确。",
+    "window_five_hour": "5 小时窗口",
+    "window_seven_day": "周窗口",
+    "window_opus": "Opus 限额",
+    "window_unknown": "限额",
+    "used_pct": "已用 {{pct}}%",
+    "resets_at_label": "重置时间 {{when}}",
+    "resets_soon": "即将重置",
+    "resets_in_minutes": "{{count}} 分钟后重置",
+    "resets_in_hours": "{{count}} 小时后重置",
+    "resets_in_hours_mins": "{{hours}} 小时 {{minutes}} 分钟后重置",
+    "source_task_error": "来自失败任务",
+    "source_probe": "来自实时探测",
+    "seen_hint": "观察到 {{when}} · {{source}}"
   }
 }

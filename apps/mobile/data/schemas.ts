@@ -436,7 +436,15 @@ export const AgentTaskSchema: z.ZodType<AgentTask> = z.object({
   runtime_id: z.string().default(""),
   issue_id: z.string().default(""),
   status: z
-    .enum(["queued", "dispatched", "running", "completed", "failed", "cancelled"])
+    .enum([
+      "queued",
+      "dispatched",
+      "waiting_local_directory",
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+    ])
     .catch("queued"),
   priority: z.number().default(0),
   dispatched_at: z.string().nullable().default(null),
@@ -449,7 +457,15 @@ export const AgentTaskSchema: z.ZodType<AgentTask> = z.object({
   // so downstream truthy checks (`if (task.failure_reason)`) don't have to
   // special-case both null/undefined AND "".
   failure_reason: z
-    .enum(["agent_error", "timeout", "runtime_offline", "runtime_recovery", "manual", ""])
+    .enum([
+      "agent_error",
+      "timeout",
+      "codex_semantic_inactivity",
+      "runtime_offline",
+      "runtime_recovery",
+      "manual",
+      "",
+    ])
     .optional()
     .catch("")
     .transform((v) => (v === "" ? undefined : v)),
@@ -476,6 +492,22 @@ export interface ActiveTasksResponse {
 
 export const EMPTY_AGENT_TASK_LIST: AgentTask[] = [];
 export const EMPTY_ACTIVE_TASKS_RESPONSE: ActiveTasksResponse = { tasks: [] };
+
+/** Fallback for write endpoints that return a single AgentTask (e.g. rerun). */
+export const EMPTY_AGENT_TASK: AgentTask = {
+  id: "",
+  agent_id: "",
+  runtime_id: "",
+  issue_id: "",
+  status: "queued",
+  priority: 0,
+  dispatched_at: null,
+  started_at: null,
+  completed_at: null,
+  result: null,
+  error: null,
+  created_at: "",
+};
 
 // =====================================================
 // User / Workspace / Inbox / Member / Agent

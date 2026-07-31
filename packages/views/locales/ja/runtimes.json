@@ -430,5 +430,24 @@
     "table_cache_r": "キャッシュ R",
     "table_cache_w": "キャッシュ W",
     "no_data": "まだ使用量データがありません"
+  },
+  "provider_limits": {
+    "title": "Provider 上限",
+    "empty": "このランタイムにはまだ上限ステータスがありません。エージェントがプラン上限（例: Claude の 5 時間ウィンドウ）に達するとここに表示されます。",
+    "status_exhausted": "プラン上限に達しました",
+    "status_unknown": "このランタイムの上限ステータスは不明です。",
+    "window_five_hour": "5 時間ウィンドウ",
+    "window_seven_day": "週間ウィンドウ",
+    "window_opus": "Opus 上限",
+    "window_unknown": "上限",
+    "used_pct": "{{pct}}% 使用",
+    "resets_at_label": "リセット {{when}}",
+    "resets_soon": "まもなくリセット",
+    "resets_in_minutes": "{{count}} 分後にリセット",
+    "resets_in_hours": "{{count}} 時間後にリセット",
+    "resets_in_hours_mins": "{{hours}} 時間 {{minutes}} 分後にリセット",
+    "source_task_error": "失敗したタスクから",
+    "source_probe": "ライブプローブから",
+    "seen_hint": "{{when}} に確認 · {{source}}"
   }
 }

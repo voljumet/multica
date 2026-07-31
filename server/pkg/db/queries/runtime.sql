@@ -71,7 +71,10 @@ DO UPDATE SET
     runtime_mode = EXCLUDED.runtime_mode,
     status = EXCLUDED.status,
     device_info = EXCLUDED.device_info,
-    metadata = EXCLUDED.metadata,
+    -- Merge rather than replace so server-written keys (e.g.
+    -- provider_limits from a plan-limit task failure) survive re-register.
+    -- Daemon keys (version, cli_version, launched_by) win on conflict.
+    metadata = COALESCE(agent_runtime.metadata, '{}'::jsonb) || EXCLUDED.metadata,
     owner_id = COALESCE(EXCLUDED.owner_id, agent_runtime.owner_id),
     last_seen_at = now(),
     updated_at = now()
@@ -105,11 +108,28 @@ DO UPDATE SET
     provider = EXCLUDED.provider,
     status = EXCLUDED.status,
     device_info = EXCLUDED.device_info,
-    metadata = EXCLUDED.metadata,
+    -- See UpsertAgentRuntime: preserve server-written metadata keys.
+    metadata = COALESCE(agent_runtime.metadata, '{}'::jsonb) || EXCLUDED.metadata,
     owner_id = COALESCE(EXCLUDED.owner_id, agent_runtime.owner_id),
     last_seen_at = now(),
     updated_at = now()
 RETURNING *, (xmax = 0) AS inserted;
+
+-- name: SetAgentRuntimeProviderLimits :one
+-- Atomically sets metadata.provider_limits on a runtime (plan-limit snapshot
+-- from a task failure or a future daemon probe). jsonb_set keeps sibling
+-- keys (cli_version, version, …) intact.
+UPDATE agent_runtime
+SET
+    metadata = jsonb_set(
+        COALESCE(metadata, '{}'::jsonb),
+        '{provider_limits}',
+        sqlc.arg('provider_limits')::jsonb,
+        true
+    ),
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+RETURNING *;
 
 -- name: UpdateAgentRuntimeVisibility :one
 -- Toggles a runtime between 'private' (only owner can bind agents) and

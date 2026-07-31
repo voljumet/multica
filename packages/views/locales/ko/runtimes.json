@@ -430,5 +430,24 @@
     "table_cache_r": "캐시 R",
     "table_cache_w": "캐시 W",
     "no_data": "아직 사용량 데이터가 없습니다"
+  },
+  "provider_limits": {
+    "title": "Provider 한도",
+    "empty": "이 런타임에는 아직 한도 상태가 없습니다. 에이전트가 요금제 한도(예: Claude 5시간 창)에 도달하면 여기에 표시됩니다.",
+    "status_exhausted": "요금제 한도 도달",
+    "status_unknown": "이 런타임의 한도 상태가 불명확합니다.",
+    "window_five_hour": "5시간 창",
+    "window_seven_day": "주간 창",
+    "window_opus": "Opus 한도",
+    "window_unknown": "한도",
+    "used_pct": "{{pct}}% 사용",
+    "resets_at_label": "초기화 {{when}}",
+    "resets_soon": "곧 초기화",
+    "resets_in_minutes": "{{count}}분 후 초기화",
+    "resets_in_hours": "{{count}}시간 후 초기화",
+    "resets_in_hours_mins": "{{hours}}시간 {{minutes}}분 후 초기화",
+    "source_task_error": "실패한 작업에서",
+    "source_probe": "실시간 프로브에서",
+    "seen_hint": "{{when}}에 확인 · {{source}}"
   }
 }
