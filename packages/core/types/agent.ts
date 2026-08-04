@@ -442,6 +442,13 @@ export interface Agent {
    * (MUL-2339).
    */
   thinking_level?: string;
+  /**
+   * Set while the agent's task queue is paused: new tasks still enqueue but
+   * nothing dispatches (and the queued-TTL sweeper leaves the queue alone)
+   * until the owner resumes. Older backends omit the field; treat
+   * undefined/null as "not paused".
+   */
+  paused_at?: string | null;
   owner_id: string | null;
   skills: AgentSkillSummary[];
   created_at: string;
@@ -649,6 +656,11 @@ export interface UpdateAgentRequest {
    *     runtime's provider enum, rejected with 400 if not recognised
    */
   thinking_level?: string;
+  /**
+   * Pause (true) or resume (false) the agent's task queue. Omitted = no
+   * change. While paused, queued tasks hold until resumed.
+   */
+  paused?: boolean;
 }
 
 /**

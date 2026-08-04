@@ -9,6 +9,7 @@ import type {
 import { AGENT_DESCRIPTION_MAX_LENGTH } from "@multica/core/agents";
 import { isImeComposing } from "@multica/core/utils";
 import { Input } from "@multica/ui/components/ui/input";
+import { Switch } from "@multica/ui/components/ui/switch";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { AvatarUploadControl } from "../../common/avatar-upload-control";
 import {
@@ -255,6 +256,17 @@ export function AgentDetailInspector({
               update({ thinking_level: thinkingLevel })
             }
           />
+          <SettingsRow
+            label={t(($) => $.inspector.prop_paused)}
+            description={t(($) => $.inspector.prop_paused_hint)}
+          >
+            <Switch
+              aria-label={t(($) => $.inspector.prop_paused)}
+              checked={agent.paused_at != null}
+              disabled={!canEdit}
+              onCheckedChange={(checked) => void update({ paused: checked })}
+            />
+          </SettingsRow>
           <SettingsRow
             label={t(($) => $.inspector.prop_concurrency)}
             size="select-wide"

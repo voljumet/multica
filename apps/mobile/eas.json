@@ -1,0 +1,14 @@
+{
+  "cli": {
+    "appVersionSource": "local"
+  },
+  "build": {
+    "production": {
+      "ios": {
+        "env": {
+          "APP_ENV": "production"
+        }
+      }
+    }
+  }
+}

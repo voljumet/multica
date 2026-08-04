@@ -57,6 +57,23 @@ func sendPushDirect(tokens []string, title, workspaceSlug, issueID string) {
 		defer resp.Body.Close()
 		if resp.StatusCode >= 300 {
 			slog.Error("push: expo returned non-2xx", "status", resp.StatusCode)
+			return
+		}
+		// Expo returns 200 with per-ticket errors (e.g. DeviceNotRegistered)
+		// in the body; surface them so delivery failures aren't silent.
+		var result struct {
+			Data []struct {
+				Status  string `json:"status"`
+				Message string `json:"message"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return
+		}
+		for _, ticket := range result.Data {
+			if ticket.Status != "ok" {
+				slog.Error("push: expo ticket error", "status", ticket.Status, "message", ticket.Message)
+			}
 		}
 	}()
 }
