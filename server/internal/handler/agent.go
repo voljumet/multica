@@ -101,6 +101,10 @@ type AgentResponse struct {
 	OwnerID                          *string                `json:"owner_id"`
 	Skills                           []AgentSkillSummary    `json:"skills"`
 	DisabledRuntimeSkills            []DisabledRuntimeSkill `json:"disabled_runtime_skills"`
+	// PausedAt is set while the agent's task queue is paused: queued tasks
+	// hold (claims refuse to dispatch, the queued-TTL sweeper skips them)
+	// until the owner resumes. Null = running normally.
+	PausedAt                         *string                `json:"paused_at"`
 	CreatedAt                        string                 `json:"created_at"`
 	UpdatedAt                        string                 `json:"updated_at"`
 	ArchivedAt                       *string                `json:"archived_at"`
@@ -192,6 +196,7 @@ func (h *Handler) agentToResponse(a db.Agent) AgentResponse {
 		ThinkingLevel:            a.ThinkingLevel.String,
 		ServiceTier:              a.ServiceTier.String,
 		ComposioToolkitAllowlist: composioAllowlist,
+		PausedAt:                 timestampToPtr(a.PausedAt),
 		OwnerID:                  uuidToPtr(a.OwnerID),
 		Skills:                   []AgentSkillSummary{},
 		DisabledRuntimeSkills:    decodeDisabledRuntimeSkills(a.DisabledRuntimeSkills),
@@ -1384,6 +1389,9 @@ type UpdateAgentRequest struct {
 	// null" (a *[]string can't, because a nil pointer is the same wire
 	// representation as both). MUL-3869.
 	ComposioToolkitAllowlist *[]string `json:"composio_toolkit_allowlist"`
+	// Paused pauses (true) or resumes (false) the agent's task queue.
+	// Omitted = no change.
+	Paused *bool `json:"paused"`
 }
 
 // workspaceAlwaysRedactSecrets reports whether the workspace has opted
@@ -1910,6 +1918,17 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Warn("clear agent service_tier failed", append(logger.RequestAttrs(r), "error", err, "agent_id", id)...)
 			writeError(w, http.StatusInternalServerError, "failed to clear service_tier: "+err.Error())
+			return
+		}
+	}
+	if req.Paused != nil && *req.Paused != updated.PausedAt.Valid {
+		updated, err = h.Queries.SetAgentPaused(r.Context(), db.SetAgentPausedParams{
+			ID:     updated.ID,
+			Paused: *req.Paused,
+		})
+		if err != nil {
+			slog.Warn("set agent paused failed", append(logger.RequestAttrs(r), "error", err, "agent_id", id)...)
+			writeError(w, http.StatusInternalServerError, "failed to update paused state: "+err.Error())
 			return
 		}
 	}

@@ -51,17 +51,6 @@ const (
 	// liveness + DB stale + FailTasksForOfflineRuntimes), which typically
 	// reclaims orphaned tasks within ~180s.
 	runningTimeoutSeconds = 9000.0
-	// queuedTTLSeconds expires tasks that have been sitting in 'queued'
-	// for longer than this without ever being claimed. This is the cleanup
-	// arm of the MUL-1899 backlog fix: even with the dispatch-time
-	// admission gate that blocks new enqueues against offline runtimes,
-	// tasks already on the queue when a runtime drops off (or that lost
-	// the race against a runtime that went offline mid-tick) need a
-	// time-bounded exit. 2 hours is conservatively above any reasonable
-	// "queued behind a long-running task" window for an online runtime, so we
-	// don't expire legitimately-pending work, while still draining the historical
-	// 87k autopilot backlog within ~24h once enabled.
-	queuedTTLSeconds = 2 * 3600.0
 	// queuedExpireBatchSize caps how many queued rows a single sweeper tick
 	// transitions to failed. Keeps the sweep transaction short even when
 	// the historical backlog is large (~89k at MUL-1899 baseline). At 30s
@@ -77,6 +66,19 @@ const (
 	// chatFinalizeBatchSize caps deferred finalizations per tick.
 	chatFinalizeBatchSize = 100
 )
+
+// queuedTTLSeconds expires tasks that have been sitting in 'queued'
+// for longer than this without ever being claimed. This is the cleanup
+// arm of the MUL-1899 backlog fix: even with the dispatch-time
+// admission gate that blocks new enqueues against offline runtimes,
+// tasks already on the queue when a runtime drops off (or that lost
+// the race against a runtime that went offline mid-tick) need a
+// time-bounded exit. The 2h default is conservatively above any reasonable
+// "queued behind a long-running task" window for an online runtime, so we
+// don't expire legitimately-pending work, while still draining the historical
+// 87k autopilot backlog within ~24h once enabled.
+// Override with TASK_QUEUED_TTL (Go duration, e.g. "30m", "4h").
+var queuedTTLSeconds = envDurationPositive("TASK_QUEUED_TTL", 2*time.Hour).Seconds()
 
 // runRuntimeSweeper periodically marks runtimes as offline if their
 // last_seen_at exceeds the stale threshold, and fails orphaned tasks.

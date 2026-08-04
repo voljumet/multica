@@ -188,6 +188,16 @@ UPDATE agent SET
 WHERE id = $1
 RETURNING *;
 
+-- name: SetAgentPaused :one
+-- Pause/resume this agent's task queue. While paused_at is set, ClaimTask
+-- refuses to dispatch and ExpireStaleQueuedTasks leaves the agent's queued
+-- rows alone, so a large queue can be held while agent settings change.
+UPDATE agent
+SET paused_at = CASE WHEN @paused::boolean THEN now() ELSE NULL END,
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: ClearAgentComposioToolkitAllowlist :one
 -- Explicit NULL-clear for composio_toolkit_allowlist. The COALESCE-based
 -- UpdateAgent cannot set the column back to NULL — sending an empty array
@@ -1109,10 +1119,15 @@ RETURNING *;
 -- the DB when the backlog is large — the sweeper drains the rest on
 -- subsequent ticks.
 WITH victims AS (
-    SELECT id FROM agent_task_queue
-    WHERE status = 'queued'
-      AND created_at < now() - make_interval(secs => @ttl_secs::double precision)
-    ORDER BY created_at ASC
+    SELECT atq.id FROM agent_task_queue atq
+    WHERE atq.status = 'queued'
+      AND atq.created_at < now() - make_interval(secs => @ttl_secs::double precision)
+      -- Paused agents hold their queue on purpose; don't expire it under them.
+      AND NOT EXISTS (
+          SELECT 1 FROM agent a
+          WHERE a.id = atq.agent_id AND a.paused_at IS NOT NULL
+      )
+    ORDER BY atq.created_at ASC
     LIMIT @max_per_tick::int
     FOR UPDATE SKIP LOCKED
 )

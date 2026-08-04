@@ -41,19 +41,13 @@ func isGitLabConfigured() bool {
 		gitlabStateHMACKey() != ""
 }
 
-// gitlabLegacyWebhookSecret is the optional deploy-wide fallback used only for
-// connections that predate per-connection secrets (empty webhook_secret column).
-// New connections never rely on it; prefer rotating from the UI.
-func gitlabLegacyWebhookSecret() string {
-	return strings.TrimSpace(os.Getenv("GITLAB_WEBHOOK_SECRET"))
-}
-
 // gitlabStateHMACKey is the server-only key for OAuth CSRF state tokens.
 // Prefer GITLAB_WEBHOOK_SECRET when set so existing deploys keep verifying
 // in-flight OAuth state after upgrade. Fall back to GITLAB_SECRET_KEY for
-// new deploys that no longer set the webhook env var.
+// new deploys that no longer set the webhook env var. The webhook env var is
+// only an HMAC key here; webhook auth itself is per-connection secrets only.
 func gitlabStateHMACKey() string {
-	if k := gitlabLegacyWebhookSecret(); k != "" {
+	if k := strings.TrimSpace(os.Getenv("GITLAB_WEBHOOK_SECRET")); k != "" {
 		return k
 	}
 	return strings.TrimSpace(os.Getenv("GITLAB_SECRET_KEY"))
@@ -73,14 +67,10 @@ func generateGitLabWebhookSecret() (string, error) {
 }
 
 // gitlabWebhookTokenMatches reports whether the X-Gitlab-Token matches this
-// connection. Prefer the per-connection secret; if it is empty (legacy row),
-// accept the deploy-wide GITLAB_WEBHOOK_SECRET as a temporary fallback.
+// connection's per-connection secret. Empty-secret rows never authenticate;
+// ListGitLabConnections lazily mints secrets for them.
 func gitlabWebhookTokenMatches(conn db.GitlabConnection, token string) bool {
-	if conn.WebhookSecret != "" {
-		return hmac.Equal([]byte(conn.WebhookSecret), []byte(token))
-	}
-	env := gitlabLegacyWebhookSecret()
-	return env != "" && hmac.Equal([]byte(env), []byte(token))
+	return conn.WebhookSecret != "" && hmac.Equal([]byte(conn.WebhookSecret), []byte(token))
 }
 
 // signGitLabState and verifyGitLabState mirror the GitHub state-token pattern.
@@ -144,6 +134,10 @@ type GitLabConnectionResponse struct {
 	NamespaceType string  `json:"namespace_type"`
 	AvatarURL     *string `json:"avatar_url"`
 	CreatedAt     string  `json:"created_at"`
+	// ConnectedByID is the Multica user whose GitLab OAuth grant backs this
+	// connection. Nil for legacy rows created before capture or when the
+	// OAuth callback had no session.
+	ConnectedByID *string `json:"connected_by_id,omitempty"`
 	// WebhookSecret is the per-connection X-Gitlab-Token value. Only set for
 	// owners/admins who need to paste it into GitLab; omitted for members.
 	WebhookSecret *string `json:"webhook_secret,omitempty"`
@@ -188,6 +182,7 @@ func gitlabConnectionToResponse(c db.GitlabConnection, includeSecret bool) GitLa
 		NamespaceType: c.NamespaceType,
 		AvatarURL:     textToPtr(c.AvatarUrl),
 		CreatedAt:     timestampToString(c.CreatedAt),
+		ConnectedByID: uuidToPtr(c.ConnectedByID),
 	}
 	if includeSecret && c.WebhookSecret != "" {
 		s := c.WebhookSecret
@@ -252,15 +247,11 @@ func (h *Handler) HandleGitLabWebhook(w http.ResponseWriter, r *http.Request) {
 	namespace := peekGitLabNamespace(body)
 	conn, err := h.resolveGitLabConnectionByNamespace(r.Context(), namespace)
 	if err != nil {
-		// Unknown namespace: still reject bad tokens so probes cannot free-ride.
-		// If a legacy deploy-wide secret is set and matches, return 204 (same
-		// as the old global-secret path for unmatched namespaces).
-		if env := gitlabLegacyWebhookSecret(); env == "" || !hmac.Equal([]byte(env), []byte(token)) {
-			writeError(w, http.StatusUnauthorized, "invalid webhook token")
-			return
-		}
+		// Unknown namespace: reject loudly so misrouted webhooks (e.g. a
+		// project in a subgroup/other group) surface as failures in GitLab
+		// instead of silently returning 204.
 		slog.Warn("gitlab: no connection for namespace", "namespace", namespace)
-		w.WriteHeader(http.StatusNoContent)
+		writeError(w, http.StatusUnauthorized, "invalid webhook token")
 		return
 	}
 	if !gitlabWebhookTokenMatches(conn, token) {
@@ -291,17 +282,11 @@ func (h *Handler) HandleGitLabWebhookForWorkspace(w http.ResponseWriter, r *http
 		return
 	}
 	if len(conns) == 0 {
-		// No connection yet — reject unless legacy env secret still matches
-		// (operator may have registered the webhook before connecting OAuth).
-		if env := gitlabLegacyWebhookSecret(); env == "" || !hmac.Equal([]byte(env), []byte(token)) {
-			writeError(w, http.StatusUnauthorized, "invalid webhook token")
-			return
-		}
 		slog.Warn("gitlab: no connection for workspace",
 			"workspace_id", uuidToString(wsUUID),
 			"event", r.Header.Get("X-Gitlab-Event"),
 		)
-		w.WriteHeader(http.StatusNoContent)
+		writeError(w, http.StatusUnauthorized, "invalid webhook token")
 		return
 	}
 	var conn *db.GitlabConnection
@@ -336,6 +321,26 @@ func (h *Handler) dispatchGitLabWebhookEvent(ctx context.Context, event string, 
 	}
 }
 
+// gitlabIssueLabel is a GitLab label object as nested in Issue Hook payloads.
+type gitlabIssueLabel struct {
+	Title string `json:"title"`
+	Color string `json:"color"`
+}
+
+// gitlabIssueLabelChange is the previous/current label lists GitLab sends under
+// changes.labels when labels are added or removed.
+type gitlabIssueLabelChange struct {
+	Previous []gitlabIssueLabel `json:"previous"`
+	Current  []gitlabIssueLabel `json:"current"`
+}
+
+// gitlabIssueStateChange is the previous/current state strings under changes.state
+// (e.g. "closed" → "opened" on reopen).
+type gitlabIssueStateChange struct {
+	Previous string `json:"previous"`
+	Current  string `json:"current"`
+}
+
 // gitlabIssuePayload is the subset of GitLab's Issue Hook webhook we consume.
 type gitlabIssuePayload struct {
 	ObjectKind       string `json:"object_kind"`
@@ -344,14 +349,22 @@ type gitlabIssuePayload struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
 		Action      string `json:"action"`
+		// State is "opened" / "closed" (GitLab issue state after the event).
+		State string `json:"state"`
+		// Labels may appear only here on some GitLab versions; prefer top-level.
+		Labels []gitlabIssueLabel `json:"labels"`
 	} `json:"object_attributes"`
-	Project  gitlabWebhookProject `json:"project"`
-	Labels   []struct {
-		Title string `json:"title"`
-	} `json:"labels"`
+	Project   gitlabWebhookProject `json:"project"`
+	Labels    []gitlabIssueLabel   `json:"labels"`
 	Assignees []struct {
 		Username string `json:"username"`
 	} `json:"assignees"`
+	// Changes is present when the hook is driven by a field mutation (labels,
+	// state, etc.). Used to detect explicit sync-label removal and state-based reopen.
+	Changes struct {
+		Labels *gitlabIssueLabelChange `json:"labels"`
+		State  *gitlabIssueStateChange `json:"state"`
+	} `json:"changes"`
 }
 
 // gitlabWebhookProject is the project object nested in GitLab webhooks.
@@ -737,9 +750,7 @@ func AppendGitLabNoteRelaySentinel(body string) string {
 }
 
 // containsLabel reports whether the labels slice contains a label with the given title.
-func containsLabel(labels []struct {
-	Title string `json:"title"`
-}, title string) bool {
+func containsLabel(labels []gitlabIssueLabel, title string) bool {
 	for _, l := range labels {
 		if l.Title == title {
 			return true
@@ -753,9 +764,7 @@ func containsLabel(labels []struct {
 // label uses the "{syncLabel}::{agentName}" form (e.g. "agent::Implementer"
 // with sync label "agent"). A prefixed label alone is enough to create the
 // Multica issue; agent assignment is best-effort and may leave it unassigned.
-func hasGitLabIssueSyncTrigger(labels []struct {
-	Title string `json:"title"`
-}, syncLabel string) bool {
+func hasGitLabIssueSyncTrigger(labels []gitlabIssueLabel, syncLabel string) bool {
 	if syncLabel == "" {
 		return false
 	}
@@ -772,13 +781,54 @@ func hasGitLabIssueSyncTrigger(labels []struct {
 	return false
 }
 
+// gitlabIssueLabels returns the effective label list from an Issue Hook payload.
+// Prefer top-level labels (standard); fall back to object_attributes.labels when
+// some GitLab versions only nest them there.
+func gitlabIssueLabels(p gitlabIssuePayload) []gitlabIssueLabel {
+	if len(p.Labels) > 0 {
+		return p.Labels
+	}
+	return p.ObjectAttributes.Labels
+}
+
+// isGitLabIssueReopened reports whether this hook reopens a closed GitLab issue.
+// Prefer action=reopen; also accept a state transition closed→opened on update
+// (some GitLab versions surface reopen that way).
+func isGitLabIssueReopened(action, state string, stateChange *gitlabIssueStateChange) bool {
+	if action == "reopen" {
+		return true
+	}
+	if stateChange == nil {
+		return false
+	}
+	prev := strings.ToLower(strings.TrimSpace(stateChange.Previous))
+	curr := strings.ToLower(strings.TrimSpace(stateChange.Current))
+	if curr == "" {
+		curr = strings.ToLower(strings.TrimSpace(state))
+	}
+	prevClosed := prev == "closed" || prev == "close"
+	currOpen := curr == "opened" || curr == "open" || curr == "reopened"
+	return prevClosed && currOpen
+}
+
+// gitlabSyncLabelRemoved reports whether the configured sync trigger was
+// explicitly removed in this webhook. Requires changes.labels so ordinary
+// description/title updates (or reopen follow-ups with an empty labels array)
+// never cancel a Multica issue.
+func gitlabSyncLabelRemoved(changes *gitlabIssueLabelChange, syncLabel string) bool {
+	if changes == nil || syncLabel == "" {
+		return false
+	}
+	had := hasGitLabIssueSyncTrigger(changes.Previous, syncLabel)
+	has := hasGitLabIssueSyncTrigger(changes.Current, syncLabel)
+	return had && !has
+}
+
 // gitlabLabelAgentNameCandidates returns possible Multica agent names encoded
 // in GitLab labels. Each label title is a candidate as-is; if it uses the
 // "{syncLabel}::{name}" form, the suffix is also a candidate (so "agent::Coder"
 // resolves against an agent named "Coder" when the sync label is "agent").
-func gitlabLabelAgentNameCandidates(labels []struct {
-	Title string `json:"title"`
-}, syncLabel string) []string {
+func gitlabLabelAgentNameCandidates(labels []gitlabIssueLabel, syncLabel string) []string {
 	prefix := ""
 	if syncLabel != "" {
 		prefix = syncLabel + "::"
@@ -813,9 +863,7 @@ func gitlabLabelAgentNameCandidates(labels []struct {
 // matchAgentByGitLabLabels picks a workspace user-agent whose name uniquely
 // matches a GitLab label (case-insensitive). Returns ok=false when zero or
 // multiple distinct agents match — create still proceeds unassigned.
-func matchAgentByGitLabLabels(agents []db.Agent, labels []struct {
-	Title string `json:"title"`
-}, syncLabel string) (db.Agent, bool) {
+func matchAgentByGitLabLabels(agents []db.Agent, labels []gitlabIssueLabel, syncLabel string) (db.Agent, bool) {
 	candidates := gitlabLabelAgentNameCandidates(labels, syncLabel)
 	if len(candidates) == 0 {
 		return db.Agent{}, false
@@ -873,6 +921,69 @@ func matchAgentByGitLabLabels(agents []db.Agent, labels []struct {
 	return db.Agent{}, false
 }
 
+// gitlabDefaultLabelColor is used when a GitLab label carries no usable color.
+const gitlabDefaultLabelColor = "#6b7280"
+
+// syncGitLabLabelsToIssue ensures a Multica issue label exists for each GitLab
+// label (matched case-insensitively by name) and attaches it to the issue.
+// The sync trigger label ("{syncLabel}" or "{syncLabel}::agent") is control
+// metadata, not content, and is skipped. Labels that fail Multica's name
+// validation are skipped with a warning.
+// ponytail: add-only sync; detaching removed labels needs changes.labels handling.
+func (h *Handler) syncGitLabLabelsToIssue(ctx context.Context, workspaceID, issueID pgtype.UUID, labels []gitlabIssueLabel, syncLabel string) {
+	existing, err := h.Queries.ListLabels(ctx, db.ListLabelsParams{
+		WorkspaceID:  workspaceID,
+		ResourceType: "issue",
+	})
+	if err != nil {
+		slog.Warn("gitlab: list labels for sync failed", "workspace", uuidToString(workspaceID), "err", err)
+		return
+	}
+	byName := make(map[string]pgtype.UUID, len(existing))
+	for _, l := range existing {
+		byName[strings.ToLower(l.Name)] = l.ID
+	}
+
+	syncPrefix := strings.ToLower(syncLabel) + "::"
+	for _, gl := range labels {
+		name, err := validateLabelName(gl.Title)
+		if err != nil {
+			slog.Warn("gitlab: skipping label with invalid name", "label", gl.Title, "err", err)
+			continue
+		}
+		lower := strings.ToLower(name)
+		if lower == strings.ToLower(syncLabel) || strings.HasPrefix(lower, syncPrefix) {
+			continue
+		}
+		id, ok := byName[lower]
+		if !ok {
+			color := gitlabDefaultLabelColor
+			if c, err := normalizeColor(gl.Color); err == nil {
+				color = c
+			}
+			created, err := h.Queries.CreateLabel(ctx, db.CreateLabelParams{
+				WorkspaceID:  workspaceID,
+				ResourceType: "issue",
+				Name:         name,
+				Color:        color,
+			})
+			if err != nil {
+				slog.Warn("gitlab: create label failed", "label", name, "err", err)
+				continue
+			}
+			id = created.ID
+			byName[lower] = id
+		}
+		if err := h.Queries.AttachLabelToIssue(ctx, db.AttachLabelToIssueParams{
+			IssueID:     issueID,
+			LabelID:     id,
+			WorkspaceID: workspaceID,
+		}); err != nil {
+			slog.Warn("gitlab: attach label failed", "label", name, "issue_id", uuidToString(issueID), "err", err)
+		}
+	}
+}
+
 func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConnection, body []byte) {
 	var p gitlabIssuePayload
 	if err := json.Unmarshal(body, &p); err != nil {
@@ -882,14 +993,18 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 
 	projectPath := p.Project.PathWithNamespace
 	action := p.ObjectAttributes.Action
+	state := p.ObjectAttributes.State
 	workspaceID := uuidToString(conn.WorkspaceID)
 	glIID := p.ObjectAttributes.IID
+	labels := gitlabIssueLabels(p)
 
 	syncLabel := defaultGitLabIssueSyncLabel
 	if ws, err := h.Queries.GetWorkspace(ctx, conn.WorkspaceID); err == nil {
 		syncLabel = workspaceGitLabIssueSyncLabel(ws.Settings)
 	}
-	hasSyncLabel := hasGitLabIssueSyncTrigger(p.Labels, syncLabel)
+	hasSyncLabel := hasGitLabIssueSyncTrigger(labels, syncLabel)
+	syncLabelRemoved := gitlabSyncLabelRemoved(p.Changes.Labels, syncLabel)
+	reopened := isGitLabIssueReopened(action, state, p.Changes.State)
 
 	assigneeUsername := ""
 	if len(p.Assignees) > 0 {
@@ -909,18 +1024,22 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 		"project", projectPath,
 		"gl_iid", glIID,
 		"action", action,
+		"state", state,
 		"sync_label", syncLabel,
 		"has_sync_label", hasSyncLabel,
+		"sync_label_removed", syncLabelRemoved,
+		"reopened", reopened,
 		"already_linked", rowExists,
 		"title", p.ObjectAttributes.Title,
-		"label_count", len(p.Labels),
+		"label_count", len(labels),
 	)
 
 	// Creating and field-syncing Multica issues requires the configured sync
 	// trigger: the bare label (default "agent") or "{label}::{agentName}".
 	// Removing the trigger does not delete the Multica issue — the link stays.
-	// Status: label remove → cancelled (unless already done/cancelled); re-add
-	// from cancelled → todo. Close always prefers done over cancelled.
+	// Status: explicit label remove → cancelled (unless already done/cancelled);
+	// re-add from cancelled → todo. Close always prefers done over cancelled.
+	// Reopen always prefers in_progress over cancel.
 	if hasSyncLabel {
 		if !rowExists && (action == "open" || action == "update") {
 			// Create Multica issue.
@@ -956,7 +1075,7 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 			if agents, err := h.Queries.ListAgents(ctx, conn.WorkspaceID); err != nil {
 				slog.Warn("gitlab: list agents for label assign failed",
 					"workspace", workspaceID, "err", err)
-			} else if agent, ok := matchAgentByGitLabLabels(agents, p.Labels, syncLabel); ok {
+			} else if agent, ok := matchAgentByGitLabLabels(agents, labels, syncLabel); ok {
 				createParams.AssigneeType = pgtype.Text{String: "agent", Valid: true}
 				createParams.AssigneeID = agent.ID
 				assignedAgentID = uuidToString(agent.ID)
@@ -992,6 +1111,7 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 			}
 			row = glRow
 			rowExists = true
+			h.syncGitLabLabelsToIssue(ctx, conn.WorkspaceID, res.Issue.ID, labels, syncLabel)
 			slog.Info("gitlab: created multica issue from sync label",
 				"workspace", workspaceID,
 				"project", projectPath,
@@ -1019,6 +1139,7 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 			}); err != nil {
 				slog.Warn("gitlab: failed to sync assignee", "err", err, "issue_id", uuidToString(row.IssueID))
 			}
+			h.syncGitLabLabelsToIssue(ctx, conn.WorkspaceID, row.IssueID, labels, syncLabel)
 			slog.Info("gitlab: synced existing linked issue",
 				"workspace", workspaceID,
 				"project", projectPath,
@@ -1046,29 +1167,28 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 	}
 
 	// Status transitions — applied after the create/sync block.
-	// Close/reopen take precedence over label-driven cancel/todo so a close
-	// without the sync label still lands on done (never cancelled).
+	// Priority: close → done; reopen → in_progress; explicit sync-label remove →
+	// cancelled; re-add → todo. Never cancel merely because the payload omits
+	// labels (that incorrectly cancelled reopened issues after a follow-up update).
 	if rowExists {
 		issue, err := h.Queries.GetIssue(ctx, row.IssueID)
 		if err != nil {
 			slog.Warn("gitlab: issue not found for status transition", "issue_id", uuidToString(row.IssueID))
 			return
 		}
-		switch action {
-		case "close":
+		switch {
+		case action == "close":
 			h.advanceIssueToDone(ctx, issue, workspaceID, "gitlab_issue_closed")
-		case "reopen":
+		case reopened:
 			h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "in_progress", "gitlab_issue_reopened")
-		default:
-			if !hasSyncLabel {
-				// Leave done alone; skip if already cancelled (idempotent).
-				if issue.Status != "done" && issue.Status != "cancelled" {
-					h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "cancelled", "gitlab_sync_label_removed")
-				}
-			} else if issue.Status == "cancelled" {
-				// Re-adding the sync trigger resumes cancelled work as todo.
-				h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "todo", "gitlab_sync_label_restored")
+		case syncLabelRemoved:
+			// Leave done alone; skip if already cancelled (idempotent).
+			if issue.Status != "done" && issue.Status != "cancelled" {
+				h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "cancelled", "gitlab_sync_label_removed")
 			}
+		case hasSyncLabel && issue.Status == "cancelled":
+			// Re-adding the sync trigger resumes cancelled work as todo.
+			h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "todo", "gitlab_sync_label_restored")
 		}
 	}
 }
@@ -1637,23 +1757,17 @@ func (h *Handler) ListGitLabConnections(w http.ResponseWriter, r *http.Request) 
 	}
 	// Lazy-issue secrets for legacy rows so admins can copy a token without
 	// re-connecting OAuth. Only managers trigger generation (avoids racing
-	// writes from every member list poll). Prefer seeding from the legacy env
-	// secret when set so existing GitLab webhooks keep working after upgrade;
-	// otherwise mint a fresh token.
+	// writes from every member list poll).
 	if canManage {
 		for i := range conns {
 			if conns[i].WebhookSecret != "" {
 				continue
 			}
-			secret := gitlabLegacyWebhookSecret()
-			if secret == "" {
-				var gerr error
-				secret, gerr = generateGitLabWebhookSecret()
-				if gerr != nil {
-					slog.Error("gitlab: failed to generate webhook secret for legacy connection",
-						"connection_id", uuidToString(conns[i].ID), "err", gerr)
-					continue
-				}
+			secret, gerr := generateGitLabWebhookSecret()
+			if gerr != nil {
+				slog.Error("gitlab: failed to generate webhook secret for legacy connection",
+					"connection_id", uuidToString(conns[i].ID), "err", gerr)
+				continue
 			}
 			updated, serr := h.Queries.SetGitLabConnectionWebhookSecret(r.Context(), db.SetGitLabConnectionWebhookSecretParams{
 				ID:            conns[i].ID,

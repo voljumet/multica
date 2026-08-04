@@ -516,6 +516,13 @@ export interface Agent {
    * account defaults remain authoritative.
    */
   service_tier?: string;
+  /**
+   * Set while the agent's task queue is paused: new tasks still enqueue but
+   * nothing dispatches (and the queued-TTL sweeper leaves the queue alone)
+   * until the owner resumes. Older backends omit the field; treat
+   * undefined/null as "not paused".
+   */
+  paused_at?: string | null;
   owner_id: string | null;
   skills: AgentSkillSummary[];
   /** Runtime-local skills this agent must not inherit. Older servers omit it. */
@@ -806,6 +813,11 @@ export interface UpdateAgentRequest {
    * clears it, and a non-empty value stores a runtime-catalog ID.
    */
   service_tier?: string;
+  /**
+   * Pause (true) or resume (false) the agent's task queue. Omitted = no
+   * change. While paused, queued tasks hold until resumed.
+   */
+  paused?: boolean;
 }
 
 /**

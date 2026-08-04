@@ -172,6 +172,8 @@
     "prop_speed": "速度",
     "prop_visibility": "可见性",
     "prop_concurrency": "并发",
+    "prop_paused": "暂停队列",
+    "prop_paused_hint": "新 task 会继续排队，但在恢复前不会运行。",
     "prop_owner": "所有者",
     "prop_created": "创建时间",
     "prop_updated": "更新时间",

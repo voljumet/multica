@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { GitMerge, Tag, Copy, RefreshCw } from "lucide-react";
+import { ArrowRight, GitMerge, Tag, Copy, RefreshCw } from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
 import { Card, CardContent } from "@multica/ui/components/ui/card";
 import { Input } from "@multica/ui/components/ui/input";
@@ -199,15 +199,25 @@ export function GitLabTab() {
               <p className="text-sm text-muted-foreground">{t(($) => $.gitlab.not_configured)}</p>
             )}
 
-            {connections.map((conn) => (
+            {connections.map((conn) => {
+              const connectedBy =
+                members.find((m) => m.user_id === conn.connected_by_id) ?? null;
+              return (
               <div key={conn.id} className="flex items-center justify-between rounded-md border p-3">
                 <div className="flex items-center gap-2">
                   {conn.avatar_url && conn.namespace_type === "user" && (
                     <img src={conn.avatar_url} alt="" className="h-6 w-6 rounded-full" />
                   )}
-                  <span className="text-sm">
-                    {t(($) => $.gitlab.connected_as, { namespace: conn.namespace })}
-                  </span>
+                  <div className="space-y-0.5">
+                    <span className="block text-sm">
+                      {t(($) => $.gitlab.connected_as, { namespace: conn.namespace })}
+                    </span>
+                    {connectedBy && (
+                      <span className="block text-xs text-muted-foreground">
+                        {t(($) => $.gitlab.connected_by, { name: connectedBy.name })}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {canManage && (
                   <Button
@@ -220,7 +230,8 @@ export function GitLabTab() {
                   </Button>
                 )}
               </div>
-            ))}
+              );
+            })}
 
             {configured && canManage && (
               <div className="space-y-2">
@@ -375,6 +386,60 @@ export function GitLabTab() {
               disabled={!canManage || !flags.enabled || savingKey === "gitlab_comment_sync_enabled"}
               onCheckedChange={(v) => persistSetting("gitlab_comment_sync_enabled", v)}
             />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold">{t(($) => $.gitlab.section_status)}</h2>
+        <Card>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {t(($) => $.gitlab.status_intro)}
+            </p>
+            <ul className="divide-y rounded-md border">
+              {[
+                {
+                  key: "close",
+                  event: t(($) => $.gitlab.status_close),
+                  result: t(($) => $.gitlab.status_close_result),
+                },
+                {
+                  key: "reopen",
+                  event: t(($) => $.gitlab.status_reopen),
+                  result: t(($) => $.gitlab.status_reopen_result),
+                },
+                {
+                  key: "mr_merge",
+                  event: t(($) => $.gitlab.status_mr_merge),
+                  result: t(($) => $.gitlab.status_mr_merge_result),
+                },
+                {
+                  key: "label_remove",
+                  event: t(($) => $.gitlab.status_label_remove),
+                  result: t(($) => $.gitlab.status_label_remove_result),
+                },
+                {
+                  key: "label_restore",
+                  event: t(($) => $.gitlab.status_label_restore),
+                  result: t(($) => $.gitlab.status_label_restore_result),
+                },
+              ].map((row) => (
+                <li
+                  key={row.key}
+                  className="flex flex-col gap-1 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                >
+                  <span className="text-sm text-foreground">{row.event}</span>
+                  <span className="flex items-center gap-1.5 text-sm text-muted-foreground sm:shrink-0">
+                    <ArrowRight className="hidden h-3.5 w-3.5 sm:block" aria-hidden />
+                    <span className="font-medium text-foreground">{row.result}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-sm text-muted-foreground">
+              {t(($) => $.gitlab.status_note)}
+            </p>
           </CardContent>
         </Card>
       </section>

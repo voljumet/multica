@@ -2553,6 +2553,12 @@ func (s *TaskService) ClaimTask(ctx context.Context, agentID pgtype.UUID) (*db.A
 			return fmt.Errorf("agent not found: %w", err)
 		}
 
+		if agent.PausedAt.Valid {
+			slog.Debug("task claim: agent paused", "agent_id", util.UUIDToString(agentID))
+			outcome = "paused"
+			return nil
+		}
+
 		t0 = time.Now()
 		running, err := qtx.CountRunningTasks(ctx, agentID)
 		countRunningMs = time.Since(t0).Milliseconds()

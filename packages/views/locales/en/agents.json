@@ -180,6 +180,8 @@
     "prop_speed": "Speed",
     "prop_visibility": "Visibility",
     "prop_concurrency": "Concurrency",
+    "prop_paused": "Pause queue",
+    "prop_paused_hint": "New tasks keep queueing but nothing runs until you resume.",
     "prop_owner": "Owner",
     "prop_created": "Created",
     "prop_updated": "Updated",
