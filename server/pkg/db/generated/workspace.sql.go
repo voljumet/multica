@@ -256,11 +256,20 @@ func (q *Queries) GetWorkspaceBySlug(ctx context.Context, slug string) (Workspac
 }
 
 const incrementIssueCounter = `-- name: IncrementIssueCounter :one
-UPDATE workspace SET issue_counter = issue_counter + 1
-WHERE id = $1
+UPDATE workspace SET issue_counter = GREATEST(
+    issue_counter,
+    (SELECT COALESCE(MAX(number), 0) FROM issue WHERE issue.workspace_id = workspace.id)
+) + 1
+WHERE workspace.id = $1
 RETURNING issue_counter
 `
 
+// GREATEST(counter, MAX(number)) self-heals a counter that fell behind the
+// issue table (e.g. rows inserted with explicit numbers by an import). Without
+// it every create in the workspace fails on uq_issue_workspace_number forever,
+// because the failing tx also rolls back the increment. The workspace row lock
+// serializes concurrent creates; after the lock wait the subquery re-reads
+// committed data, so the MAX always includes the previous winner's row.
 func (q *Queries) IncrementIssueCounter(ctx context.Context, id pgtype.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, incrementIssueCounter, id)
 	var issue_counter int32
