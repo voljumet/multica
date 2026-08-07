@@ -68,13 +68,31 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
   }, [initialize, qc]);
 
   useEffect(() => {
-    // Handle notification tap: navigate to the issue that triggered the push.
-    // Fires when the user taps a notification that launches or foregrounds the app.
+    // Handle notification responses: long-press action or default tap.
+    // Fires when the user taps a notification or activates an action button.
     const sub = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const data = response.notification.request.content.data as
           | { workspace_slug?: string; issue_id?: string }
           | undefined;
+
+        // Long-press action: "Turn Off Notifications" — unsubscribe from the
+        // issue and return. Do NOT navigate; the user dismissed the notification
+        // without intending to open the app's issue view.
+        if (response.actionIdentifier === "mute_issue") {
+          if (data?.workspace_slug && data?.issue_id) {
+            void api
+              .unsubscribeFromIssue(data.issue_id, data.workspace_slug)
+              .catch(() => {
+                // Fire-and-forget: silently ignore network failures here.
+                // The user will not receive notifications anyway because the
+                // server's subscription check is the authority.
+              });
+          }
+          return;
+        }
+
+        // Default tap: navigate to the issue.
         if (data?.workspace_slug && data?.issue_id) {
           router.push(
             `/${data.workspace_slug}/issue/${data.issue_id}` as Parameters<
