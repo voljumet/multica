@@ -9,6 +9,8 @@ export interface GitLabConnection {
   created_at: string;
   /** Per-connection X-Gitlab-Token value; only present for owners/admins. */
   webhook_secret?: string | null;
+  /** Multica user whose GitLab OAuth grant backs this connection. */
+  connected_by_id?: string | null;
 }
 
 export interface GitLabMergeRequest {
@@ -33,6 +35,10 @@ export interface ListGitLabConnectionsResponse {
   configured: boolean;
   can_manage?: boolean;
   gitlab_url?: string;
+}
+
+export interface GitLabUserLink {
+  gitlab_username: string | null;
 }
 
 export interface GitLabIssue {

@@ -89,10 +89,14 @@ type AgentResponse struct {
 	ComposioToolkitAllowlistRedacted bool                `json:"composio_toolkit_allowlist_redacted,omitempty"`
 	OwnerID                          *string             `json:"owner_id"`
 	Skills                           []AgentSkillSummary `json:"skills"`
-	CreatedAt                        string              `json:"created_at"`
-	UpdatedAt                        string              `json:"updated_at"`
-	ArchivedAt                       *string             `json:"archived_at"`
-	ArchivedBy                       *string             `json:"archived_by"`
+	// PausedAt is set while the agent's task queue is paused: queued tasks
+	// hold (claims refuse to dispatch, the queued-TTL sweeper skips them)
+	// until the owner resumes. Null = running normally.
+	PausedAt   *string `json:"paused_at"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+	ArchivedAt *string `json:"archived_at"`
+	ArchivedBy *string `json:"archived_by"`
 	// SystemKey is set for integration identity shells (e.g. GitLab comment
 	// personas keyed as gitlab:{id}). Omitted when null so normal agents
 	// keep a compact payload. Clients treat a gitlab: prefix as non-runnable.
@@ -178,6 +182,7 @@ func agentToResponse(a db.Agent) AgentResponse {
 		Model:                    a.Model.String,
 		ThinkingLevel:            a.ThinkingLevel.String,
 		ComposioToolkitAllowlist: composioAllowlist,
+		PausedAt:                 timestampToPtr(a.PausedAt),
 		OwnerID:                  uuidToPtr(a.OwnerID),
 		Skills:                   []AgentSkillSummary{},
 		CreatedAt:                timestampToString(a.CreatedAt),
@@ -1313,6 +1318,9 @@ type UpdateAgentRequest struct {
 	// null" (a *[]string can't, because a nil pointer is the same wire
 	// representation as both). MUL-3869.
 	ComposioToolkitAllowlist *[]string `json:"composio_toolkit_allowlist"`
+	// Paused pauses (true) or resumes (false) the agent's task queue.
+	// Omitted = no change.
+	Paused *bool `json:"paused"`
 }
 
 // workspaceAlwaysRedactSecrets reports whether the workspace has opted
@@ -1770,6 +1778,17 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Warn("clear agent thinking_level failed", append(logger.RequestAttrs(r), "error", err, "agent_id", id)...)
 			writeError(w, http.StatusInternalServerError, "failed to clear thinking_level: "+err.Error())
+			return
+		}
+	}
+	if req.Paused != nil && *req.Paused != updated.PausedAt.Valid {
+		updated, err = h.Queries.SetAgentPaused(r.Context(), db.SetAgentPausedParams{
+			ID:     updated.ID,
+			Paused: *req.Paused,
+		})
+		if err != nil {
+			slog.Warn("set agent paused failed", append(logger.RequestAttrs(r), "error", err, "agent_id", id)...)
+			writeError(w, http.StatusInternalServerError, "failed to update paused state: "+err.Error())
 			return
 		}
 	}

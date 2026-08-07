@@ -71,3 +71,12 @@ func TestSendPushDirect_FiresForExpoToken(t *testing.T) {
 		t.Fatal("expected request body to contain push message")
 	}
 }
+
+// The default Expo push endpoint must include the /--/ path prefix —
+// https://exp.host/api/v2/push/send (without it) returns 404 and every
+// push silently fails. Regression guard since other tests stub the URL.
+func TestExpoPushURLDefault(t *testing.T) {
+	if expoPushURL != "https://exp.host/--/api/v2/push/send" {
+		t.Fatalf("unexpected default expoPushURL: %s", expoPushURL)
+	}
+}

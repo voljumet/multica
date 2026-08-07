@@ -117,4 +117,15 @@ describe("GitLabTab", () => {
     );
     expect((input as HTMLInputElement).value).not.toMatch(/^file:/);
   });
+
+  it("shows the status sync legend for operators", async () => {
+    render(<GitLabTab />, { wrapper });
+    expect(await screen.findByText("section_status")).toBeTruthy();
+    expect(screen.getByText("status_close")).toBeTruthy();
+    expect(screen.getByText("status_reopen")).toBeTruthy();
+    expect(screen.getByText("status_mr_merge")).toBeTruthy();
+    expect(screen.getByText("status_label_remove")).toBeTruthy();
+    expect(screen.getByText("status_label_restore")).toBeTruthy();
+    expect(screen.getByText("status_note")).toBeTruthy();
+  });
 });

@@ -22,7 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         ? "Multica (Staging)"
         : "Multica (Dev)",
     slug: "multica-mobile",
-    version: "0.1.0",
+    version: "0.1.2",
     orientation: "portrait",
     userInterfaceStyle: "automatic",
     scheme: "multica",
@@ -31,6 +31,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // iOS icon size from this single PNG.
     icon: "./assets/icon.png",
     ios: {
+      // Bumped by build.sh: +1 per upload of the same version, reset to 1 on
+      // a version change. Keep on its own line — build.sh rewrites it via sed.
+      buildNumber: "2",
       supportsTablet: false,
       // Per-variant bundle id overrides exist for one reason: an Apple ID
       // can only sign bundle prefixes it owns, so contributors not on the
@@ -87,6 +90,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
     ],
-    extra: { APP_ENV: env },
+    extra: {
+      APP_ENV: env,
+      eas: {
+        // From .env (gitignored) — see .env.example. Expo CLI / EAS CLI
+        // auto-load .env when evaluating this config.
+        projectId: process.env.EAS_PROJECT_ID,
+      },
+    },
+    owner: process.env.EXPO_OWNER
   };
 };

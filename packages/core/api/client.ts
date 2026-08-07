@@ -127,6 +127,7 @@ import type {
   GitLabConnection,
   GitLabMergeRequest,
   GitLabIssue,
+  GitLabUserLink,
   ListGitLabConnectionsResponse,
   ListLarkInstallationsResponse,
   BeginLarkInstallResponse,
@@ -2759,6 +2760,21 @@ export class ApiClient {
 
   async unlinkGitLabIssue(issueId: string): Promise<void> {
     return this.fetch(`/api/issues/${issueId}/gitlab-issue`, { method: "DELETE" });
+  }
+
+  async getGitLabUserLink(workspaceId: string): Promise<GitLabUserLink> {
+    return this.fetch(`/api/workspaces/${workspaceId}/gitlab/user-link`);
+  }
+
+  async linkGitLabUser(workspaceId: string, gitlabUsername: string): Promise<GitLabUserLink> {
+    return this.fetch(`/api/workspaces/${workspaceId}/gitlab/user-link`, {
+      method: "POST",
+      body: JSON.stringify({ gitlab_username: gitlabUsername }),
+    });
+  }
+
+  async unlinkGitLabUser(workspaceId: string): Promise<void> {
+    await this.fetch(`/api/workspaces/${workspaceId}/gitlab/user-link`, { method: "DELETE" });
   }
 
   // Lark integration

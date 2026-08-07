@@ -509,6 +509,9 @@ func notifyMentionedMembers(
 	}
 	mentionPrefs := loadUserPrefs(context.Background(), queries, e.WorkspaceID, mentionUserIDs)
 
+	// Workspace slug for push deep-linking (shared by all recipients).
+	wsSlug := workspaceSlugByID(context.Background(), queries, e.WorkspaceID)
+
 	for id := range recipientIDs {
 		if id == e.ActorID || skip[id] {
 			continue
@@ -542,6 +545,8 @@ func notifyMentionedMembers(
 			ActorID:     e.ActorID,
 			Payload:     map[string]any{"item": resp},
 		})
+		// Dispatch push notification to the mentioned member's devices.
+		sendPushNotifications(context.Background(), queries, id, item.Title, wsSlug, issueID)
 	}
 }
 

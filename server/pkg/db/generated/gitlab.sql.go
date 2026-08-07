@@ -105,6 +105,20 @@ func (q *Queries) DeleteGitLabIssueByIssueID(ctx context.Context, arg DeleteGitL
 	return err
 }
 
+const deleteGitLabUserLink = `-- name: DeleteGitLabUserLink :exec
+DELETE FROM gitlab_user_link WHERE workspace_id = $1 AND member_id = $2
+`
+
+type DeleteGitLabUserLinkParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MemberID    pgtype.UUID `json:"member_id"`
+}
+
+func (q *Queries) DeleteGitLabUserLink(ctx context.Context, arg DeleteGitLabUserLinkParams) error {
+	_, err := q.db.Exec(ctx, deleteGitLabUserLink, arg.WorkspaceID, arg.MemberID)
+	return err
+}
+
 const getFirstGitLabConnectionByWorkspace = `-- name: GetFirstGitLabConnectionByWorkspace :one
 SELECT id, workspace_id, namespace, namespace_type, avatar_url, access_token, token_expires_at, connected_by_id, created_at, updated_at, refresh_token, webhook_secret FROM gitlab_connection WHERE workspace_id = $1 LIMIT 1
 `
@@ -293,6 +307,50 @@ func (q *Queries) GetGitLabMergeRequest(ctx context.Context, arg GetGitLabMergeR
 		&i.MrUpdatedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getGitLabUserLinkByMember = `-- name: GetGitLabUserLinkByMember :one
+SELECT id, workspace_id, member_id, gitlab_username, created_at FROM gitlab_user_link WHERE workspace_id = $1 AND member_id = $2
+`
+
+type GetGitLabUserLinkByMemberParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	MemberID    pgtype.UUID `json:"member_id"`
+}
+
+func (q *Queries) GetGitLabUserLinkByMember(ctx context.Context, arg GetGitLabUserLinkByMemberParams) (GitlabUserLink, error) {
+	row := q.db.QueryRow(ctx, getGitLabUserLinkByMember, arg.WorkspaceID, arg.MemberID)
+	var i GitlabUserLink
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.MemberID,
+		&i.GitlabUsername,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getGitLabUserLinkByUsername = `-- name: GetGitLabUserLinkByUsername :one
+SELECT id, workspace_id, member_id, gitlab_username, created_at FROM gitlab_user_link WHERE workspace_id = $1 AND gitlab_username = $2
+`
+
+type GetGitLabUserLinkByUsernameParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	GitlabUsername string      `json:"gitlab_username"`
+}
+
+func (q *Queries) GetGitLabUserLinkByUsername(ctx context.Context, arg GetGitLabUserLinkByUsernameParams) (GitlabUserLink, error) {
+	row := q.db.QueryRow(ctx, getGitLabUserLinkByUsername, arg.WorkspaceID, arg.GitlabUsername)
+	var i GitlabUserLink
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.MemberID,
+		&i.GitlabUsername,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -647,6 +705,33 @@ func (q *Queries) UpsertGitLabMergeRequest(ctx context.Context, arg UpsertGitLab
 		&i.MrUpdatedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertGitLabUserLink = `-- name: UpsertGitLabUserLink :one
+INSERT INTO gitlab_user_link (workspace_id, member_id, gitlab_username)
+VALUES ($1, $2, $3)
+ON CONFLICT (workspace_id, member_id) DO UPDATE SET
+    gitlab_username = EXCLUDED.gitlab_username
+RETURNING id, workspace_id, member_id, gitlab_username, created_at
+`
+
+type UpsertGitLabUserLinkParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	MemberID       pgtype.UUID `json:"member_id"`
+	GitlabUsername string      `json:"gitlab_username"`
+}
+
+func (q *Queries) UpsertGitLabUserLink(ctx context.Context, arg UpsertGitLabUserLinkParams) (GitlabUserLink, error) {
+	row := q.db.QueryRow(ctx, upsertGitLabUserLink, arg.WorkspaceID, arg.MemberID, arg.GitlabUsername)
+	var i GitlabUserLink
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.MemberID,
+		&i.GitlabUsername,
+		&i.CreatedAt,
 	)
 	return i, err
 }

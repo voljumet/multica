@@ -137,3 +137,19 @@ WHERE id = $1;
 
 -- name: DeleteGitLabIssueByIssueID :exec
 DELETE FROM gitlab_issue WHERE issue_id = $1 AND workspace_id = $2;
+
+-- name: UpsertGitLabUserLink :one
+INSERT INTO gitlab_user_link (workspace_id, member_id, gitlab_username)
+VALUES ($1, $2, $3)
+ON CONFLICT (workspace_id, member_id) DO UPDATE SET
+    gitlab_username = EXCLUDED.gitlab_username
+RETURNING *;
+
+-- name: GetGitLabUserLinkByMember :one
+SELECT * FROM gitlab_user_link WHERE workspace_id = $1 AND member_id = $2;
+
+-- name: GetGitLabUserLinkByUsername :one
+SELECT * FROM gitlab_user_link WHERE workspace_id = $1 AND gitlab_username = $2;
+
+-- name: DeleteGitLabUserLink :exec
+DELETE FROM gitlab_user_link WHERE workspace_id = $1 AND member_id = $2;

@@ -59,9 +59,7 @@ func TestGitLabImportedIssueTitle(t *testing.T) {
 }
 
 func TestGitLabLabelAgentNameCandidates(t *testing.T) {
-	labels := []struct {
-		Title string `json:"title"`
-	}{
+	labels := []gitlabIssueLabel{
 		{Title: "agent"},
 		{Title: "agent::Coder"},
 		{Title: "  Research  "},
@@ -78,39 +76,77 @@ func TestGitLabLabelAgentNameCandidates(t *testing.T) {
 	}
 }
 
-func TestHasGitLabIssueSyncTrigger(t *testing.T) {
-	label := func(titles ...string) []struct {
-		Title string `json:"title"`
-	} {
-		out := make([]struct {
-			Title string `json:"title"`
-		}, len(titles))
-		for i, t := range titles {
-			out[i].Title = t
-		}
-		return out
+func testGitLabLabels(titles ...string) []gitlabIssueLabel {
+	out := make([]gitlabIssueLabel, len(titles))
+	for i, t := range titles {
+		out[i].Title = t
 	}
+	return out
+}
 
-	if !hasGitLabIssueSyncTrigger(label("agent"), "agent") {
+func TestHasGitLabIssueSyncTrigger(t *testing.T) {
+	if !hasGitLabIssueSyncTrigger(testGitLabLabels("agent"), "agent") {
 		t.Fatal("bare sync label should trigger")
 	}
-	if !hasGitLabIssueSyncTrigger(label("agent::Implementer"), "agent") {
+	if !hasGitLabIssueSyncTrigger(testGitLabLabels("agent::Implementer"), "agent") {
 		t.Fatal("prefixed agent name alone should trigger import")
 	}
-	if !hasGitLabIssueSyncTrigger(label("bug", "agent::Coder"), "agent") {
+	if !hasGitLabIssueSyncTrigger(testGitLabLabels("bug", "agent::Coder"), "agent") {
 		t.Fatal("prefixed label among others should trigger")
 	}
-	if hasGitLabIssueSyncTrigger(label("agent:"), "agent") {
+	if hasGitLabIssueSyncTrigger(testGitLabLabels("agent:"), "agent") {
 		t.Fatal("single-colon form should not trigger")
 	}
-	if hasGitLabIssueSyncTrigger(label("agent::"), "agent") {
+	if hasGitLabIssueSyncTrigger(testGitLabLabels("agent::"), "agent") {
 		t.Fatal("empty name after prefix should not trigger")
 	}
-	if hasGitLabIssueSyncTrigger(label("Implementer"), "agent") {
+	if hasGitLabIssueSyncTrigger(testGitLabLabels("Implementer"), "agent") {
 		t.Fatal("agent name alone without sync prefix should not trigger")
 	}
-	if hasGitLabIssueSyncTrigger(label("agents"), "agent") {
+	if hasGitLabIssueSyncTrigger(testGitLabLabels("agents"), "agent") {
 		t.Fatal("unrelated label should not trigger")
+	}
+}
+
+func TestGitLabSyncLabelRemoved(t *testing.T) {
+	if gitlabSyncLabelRemoved(nil, "agent") {
+		t.Fatal("nil changes must not cancel")
+	}
+	if !gitlabSyncLabelRemoved(&gitlabIssueLabelChange{
+		Previous: testGitLabLabels("agent", "bug"),
+		Current:  testGitLabLabels("bug"),
+	}, "agent") {
+		t.Fatal("removing bare sync label should count as removed")
+	}
+	if !gitlabSyncLabelRemoved(&gitlabIssueLabelChange{
+		Previous: testGitLabLabels("agent::Coder"),
+		Current:  nil,
+	}, "agent") {
+		t.Fatal("removing prefixed sync label should count as removed")
+	}
+	if gitlabSyncLabelRemoved(&gitlabIssueLabelChange{
+		Previous: testGitLabLabels("bug"),
+		Current:  testGitLabLabels("bug", "feature"),
+	}, "agent") {
+		t.Fatal("unrelated label changes must not count as sync remove")
+	}
+	if gitlabSyncLabelRemoved(&gitlabIssueLabelChange{
+		Previous: testGitLabLabels("agent"),
+		Current:  testGitLabLabels("agent", "bug"),
+	}, "agent") {
+		t.Fatal("still present after other labels change must not count as removed")
+	}
+}
+
+func TestIsGitLabIssueReopened(t *testing.T) {
+	if !isGitLabIssueReopened("reopen", "opened", nil) {
+		t.Fatal("action=reopen should count")
+	}
+	if isGitLabIssueReopened("update", "opened", nil) {
+		t.Fatal("update without state change should not count as reopen")
+	}
+	if !isGitLabIssueReopened("update", "opened", &gitlabIssueStateChange{Previous: "closed", Current: "opened"}) {
+		t.Fatal("closed→opened state change should count as reopen")
 	}
 }
 
@@ -122,36 +158,24 @@ func TestMatchAgentByGitLabLabels(t *testing.T) {
 		{ID: researchID, Name: "Research", Kind: "user"},
 		{ID: parseUUID("33333333-3333-3333-3333-333333333333"), Name: "Persona", Kind: "system"},
 	}
-	label := func(titles ...string) []struct {
-		Title string `json:"title"`
-	} {
-		out := make([]struct {
-			Title string `json:"title"`
-		}, len(titles))
-		for i, t := range titles {
-			out[i].Title = t
-		}
-		return out
-	}
-
-	if _, ok := matchAgentByGitLabLabels(agents, label("agent"), "agent"); ok {
+	if _, ok := matchAgentByGitLabLabels(agents, testGitLabLabels("agent"), "agent"); ok {
 		t.Fatal("sync label alone should not assign when no agent is named agent")
 	}
-	got, ok := matchAgentByGitLabLabels(agents, label("agent", "agent::Coder"), "agent")
+	got, ok := matchAgentByGitLabLabels(agents, testGitLabLabels("agent", "agent::Coder"), "agent")
 	if !ok || uuidToString(got.ID) != uuidToString(coderID) {
 		t.Fatalf("prefixed name: ok=%v agent=%q", ok, got.Name)
 	}
-	got, ok = matchAgentByGitLabLabels(agents, label("agent", "Research"), "agent")
+	got, ok = matchAgentByGitLabLabels(agents, testGitLabLabels("agent", "Research"), "agent")
 	if !ok || uuidToString(got.ID) != uuidToString(researchID) {
 		t.Fatalf("exact name: ok=%v agent=%q", ok, got.Name)
 	}
-	if _, ok := matchAgentByGitLabLabels(agents, label("agent", "Coder", "Research"), "agent"); ok {
+	if _, ok := matchAgentByGitLabLabels(agents, testGitLabLabels("agent", "Coder", "Research"), "agent"); ok {
 		t.Fatal("two agent-name labels should be ambiguous")
 	}
-	if _, ok := matchAgentByGitLabLabels(agents, label("agent", "Persona"), "agent"); ok {
+	if _, ok := matchAgentByGitLabLabels(agents, testGitLabLabels("agent", "Persona"), "agent"); ok {
 		t.Fatal("system persona must not be assigned")
 	}
-	got, ok = matchAgentByGitLabLabels(agents, label("agent", "coder"), "agent")
+	got, ok = matchAgentByGitLabLabels(agents, testGitLabLabels("agent", "coder"), "agent")
 	if !ok || uuidToString(got.ID) != uuidToString(coderID) {
 		t.Fatalf("case-insensitive: ok=%v agent=%q", ok, got.Name)
 	}
@@ -239,8 +263,7 @@ func TestHandleGitLabWebhook_MissingSecret(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("no database available")
 	}
-	// No env secret and no connection → reject (unknown namespace, no legacy fallback).
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "")
+	// No connection for the namespace → reject; there is no deploy-wide fallback.
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(`{"project":{"namespace":"nope"}}`))
 	req.Header.Set("X-Gitlab-Token", "anything")
 	req.Header.Set("X-Gitlab-Event", "Merge Request Hook")
@@ -272,7 +295,6 @@ func TestHandleGitLabWebhook_WrongToken(t *testing.T) {
 			ID: conn.ID, WorkspaceID: wsUUID,
 		})
 	})
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "")
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(
 		`{"project":{"namespace":"wrong-token-ns"}}`,
 	))
@@ -306,7 +328,6 @@ func TestHandleGitLabWebhook_UnknownEvent(t *testing.T) {
 			ID: conn.ID, WorkspaceID: wsUUID,
 		})
 	})
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "")
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(
 		`{"project":{"namespace":"unknown-event-ns"}}`,
 	))
@@ -335,6 +356,7 @@ func TestHandleGitLabIssueEvent_LabelAdd(t *testing.T) {
 		Namespace:     "testorg-issue-add",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -353,7 +375,6 @@ func TestHandleGitLabIssueEvent_LabelAdd(t *testing.T) {
 		"labels": [{"title": "agent"}],
 		"assignees": []
 	}`
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(payload))
 	req.Header.Set("X-Gitlab-Token", "s")
 	req.Header.Set("X-Gitlab-Event", "Issue Hook")
@@ -381,6 +402,100 @@ func TestHandleGitLabIssueEvent_LabelAdd(t *testing.T) {
 	}
 	if issue.AssigneeType.Valid {
 		t.Errorf("expected unassigned without agent-name label, got type=%q", issue.AssigneeType.String)
+	}
+}
+
+// TestHandleGitLabIssueEvent_CreatesMissingLabels verifies that GitLab labels
+// (other than the sync trigger) are created in Multica when missing, reuse an
+// existing label case-insensitively on later events, and are attached to the
+// synced issue. The sync label itself must not become a Multica label.
+func TestHandleGitLabIssueEvent_CreatesMissingLabels(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-labels",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		WebhookSecret: "s",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: create connection: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+		testPool.Exec(ctx, `DELETE FROM issue_label WHERE workspace_id = $1 AND LOWER(name) = 'gl bug'`, testWorkspaceID)
+	})
+
+	send := func(payload string) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(payload))
+		req.Header.Set("X-Gitlab-Token", "s")
+		req.Header.Set("X-Gitlab-Event", "Issue Hook")
+		w := httptest.NewRecorder()
+		testHandler.HandleGitLabWebhook(w, req)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("expected 204, got %d", w.Code)
+		}
+	}
+
+	send(`{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 70, "title": "Label me", "description": "", "action": "open"},
+		"project": {"id": 700, "path_with_namespace": "testorg-issue-labels/repo", "namespace": "testorg-issue-labels"},
+		"labels": [{"title": "agent"}, {"title": "GL Bug", "color": "#FF0000"}],
+		"assignees": []
+	}`)
+
+	row, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID,
+		ProjectPath: "testorg-issue-labels/repo",
+		GlIssueIid:  70,
+	})
+	if err != nil {
+		t.Fatalf("gitlab_issue not created: %v", err)
+	}
+
+	attached, err := testHandler.Queries.ListLabelsByIssue(ctx, db.ListLabelsByIssueParams{
+		IssueID: row.IssueID, WorkspaceID: wsUUID,
+	})
+	if err != nil {
+		t.Fatalf("list labels by issue: %v", err)
+	}
+	if len(attached) != 1 || attached[0].Name != "GL Bug" {
+		t.Fatalf("expected exactly [GL Bug] attached, got %+v", attached)
+	}
+	if attached[0].Color != "#ff0000" {
+		t.Errorf("color: got %q, want %q", attached[0].Color, "#ff0000")
+	}
+
+	// A later event with a case variant must reuse the existing label, not
+	// create a duplicate.
+	send(`{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 70, "title": "Label me", "description": "", "action": "update", "state": "opened"},
+		"project": {"id": 700, "path_with_namespace": "testorg-issue-labels/repo", "namespace": "testorg-issue-labels"},
+		"labels": [{"title": "agent"}, {"title": "gl bug", "color": "#00FF00"}],
+		"assignees": []
+	}`)
+
+	var n int
+	if err := testPool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM issue_label WHERE workspace_id = $1 AND LOWER(name) = 'gl bug'`,
+		testWorkspaceID,
+	).Scan(&n); err != nil {
+		t.Fatalf("count labels: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 'gl bug' label, got %d", n)
 	}
 }
 
@@ -415,6 +530,7 @@ func TestHandleGitLabIssueEvent_AssignsAgentByName(t *testing.T) {
 		Namespace:     "testorg-agent-name",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -434,7 +550,6 @@ func TestHandleGitLabIssueEvent_AssignsAgentByName(t *testing.T) {
 		"labels": [{"title": "agent::Handler Test Agent"}],
 		"assignees": []
 	}`
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(payload))
 	req.Header.Set("X-Gitlab-Token", "s")
 	req.Header.Set("X-Gitlab-Event", "Issue Hook")
@@ -538,6 +653,7 @@ func TestHandleGitLabIssueEvent_AssignsMatchingProject(t *testing.T) {
 		Namespace:     "testorg-issue-project",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -616,7 +732,6 @@ func TestHandleGitLabIssueEvent_AssignsMatchingProject(t *testing.T) {
 		"labels": [{"title": "agent"}],
 		"assignees": []
 	}`
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(payload))
 	req.Header.Set("X-Gitlab-Token", "s")
 	req.Header.Set("X-Gitlab-Event", "Issue Hook")
@@ -680,6 +795,7 @@ func TestHandleGitLabIssueEvent_CustomSyncLabel(t *testing.T) {
 		Namespace:     "testorg-custom-label",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -699,7 +815,6 @@ func TestHandleGitLabIssueEvent_CustomSyncLabel(t *testing.T) {
 		"labels": [{"title": "agent"}],
 		"assignees": []
 	}`
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(agentOnly))
 	req.Header.Set("X-Gitlab-Token", "s")
 	req.Header.Set("X-Gitlab-Event", "Issue Hook")
@@ -760,6 +875,7 @@ func TestHandleGitLabIssueEvent_LabelRemoveCancelsIssue(t *testing.T) {
 		Namespace:     "testorg-issue-remove",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -779,7 +895,6 @@ func TestHandleGitLabIssueEvent_LabelRemoveCancelsIssue(t *testing.T) {
 		"labels": [{"title": "agent"}],
 		"assignees": []
 	}`
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	addReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(addPayload))
 	addReq.Header.Set("X-Gitlab-Token", "s")
 	addReq.Header.Set("X-Gitlab-Event", "Issue Hook")
@@ -793,13 +908,19 @@ func TestHandleGitLabIssueEvent_LabelRemoveCancelsIssue(t *testing.T) {
 	}
 	issueID := row.IssueID
 
-	// Remove label.
+	// Remove label (GitLab includes changes.labels on label mutations).
 	removePayload := `{
 		"object_kind": "issue",
-		"object_attributes": {"iid": 11, "title": "Remove me", "description": "", "action": "update"},
+		"object_attributes": {"iid": 11, "title": "Remove me", "description": "", "action": "update", "state": "opened"},
 		"project": {"id": 100, "path_with_namespace": "testorg-issue-remove/repo", "namespace": "testorg-issue-remove"},
 		"labels": [],
-		"assignees": []
+		"assignees": [],
+		"changes": {
+			"labels": {
+				"previous": [{"title": "agent"}],
+				"current": []
+			}
+		}
 	}`
 	removeReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(removePayload))
 	removeReq.Header.Set("X-Gitlab-Token", "s")
@@ -836,6 +957,7 @@ func TestHandleGitLabIssueEvent_LabelRestoreUncancelsToTodo(t *testing.T) {
 		Namespace:     "testorg-issue-restore",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -847,10 +969,9 @@ func TestHandleGitLabIssueEvent_LabelRestoreUncancelsToTodo(t *testing.T) {
 		})
 	})
 
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	for _, p := range []string{
 		`{"object_kind":"issue","object_attributes":{"iid":61,"title":"Restore me","description":"","action":"open"},"project":{"id":610,"path_with_namespace":"testorg-issue-restore/repo","namespace":"testorg-issue-restore"},"labels":[{"title":"agent"}],"assignees":[]}`,
-		`{"object_kind":"issue","object_attributes":{"iid":61,"title":"Restore me","description":"","action":"update"},"project":{"id":610,"path_with_namespace":"testorg-issue-restore/repo","namespace":"testorg-issue-restore"},"labels":[],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":61,"title":"Restore me","description":"","action":"update","state":"opened"},"project":{"id":610,"path_with_namespace":"testorg-issue-restore/repo","namespace":"testorg-issue-restore"},"labels":[],"assignees":[],"changes":{"labels":{"previous":[{"title":"agent"}],"current":[]}}}`,
 	} {
 		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(p))
 		req.Header.Set("X-Gitlab-Token", "s")
@@ -909,6 +1030,7 @@ func TestHandleGitLabIssueEvent_LabelRemoveLeavesDoneAlone(t *testing.T) {
 		Namespace:     "testorg-issue-leave-done",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -920,7 +1042,6 @@ func TestHandleGitLabIssueEvent_LabelRemoveLeavesDoneAlone(t *testing.T) {
 		})
 	})
 
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	for _, p := range []string{
 		`{"object_kind":"issue","object_attributes":{"iid":62,"title":"Leave done","description":"","action":"open"},"project":{"id":620,"path_with_namespace":"testorg-issue-leave-done/repo","namespace":"testorg-issue-leave-done"},"labels":[{"title":"agent"}],"assignees":[]}`,
 		`{"object_kind":"issue","object_attributes":{"iid":62,"title":"Leave done","description":"","action":"close"},"project":{"id":620,"path_with_namespace":"testorg-issue-leave-done/repo","namespace":"testorg-issue-leave-done"},"labels":[{"title":"agent"}],"assignees":[]}`,
@@ -941,10 +1062,16 @@ func TestHandleGitLabIssueEvent_LabelRemoveLeavesDoneAlone(t *testing.T) {
 	// Remove label while Multica is done.
 	removePayload := `{
 		"object_kind": "issue",
-		"object_attributes": {"iid": 62, "title": "Leave done", "description": "", "action": "update"},
+		"object_attributes": {"iid": 62, "title": "Leave done", "description": "", "action": "update", "state": "closed"},
 		"project": {"id": 620, "path_with_namespace": "testorg-issue-leave-done/repo", "namespace": "testorg-issue-leave-done"},
 		"labels": [],
-		"assignees": []
+		"assignees": [],
+		"changes": {
+			"labels": {
+				"previous": [{"title": "agent"}],
+				"current": []
+			}
+		}
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(removePayload))
 	req.Header.Set("X-Gitlab-Token", "s")
@@ -975,6 +1102,7 @@ func TestHandleGitLabIssueEvent_ClosePrefersDoneOverCancelled(t *testing.T) {
 		Namespace:     "testorg-issue-close-no-label",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -986,7 +1114,6 @@ func TestHandleGitLabIssueEvent_ClosePrefersDoneOverCancelled(t *testing.T) {
 		})
 	})
 
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	// Create with label, then close without the label in the same close event.
 	addPayload := `{
 		"object_kind": "issue",
@@ -1042,6 +1169,7 @@ func TestHandleGitLabIssueEvent_Close(t *testing.T) {
 		Namespace:     "testorg-issue-close",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -1061,7 +1189,6 @@ func TestHandleGitLabIssueEvent_Close(t *testing.T) {
 		"labels": [{"title": "agent"}],
 		"assignees": []
 	}`
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	addReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(addPayload))
 	addReq.Header.Set("X-Gitlab-Token", "s")
 	addReq.Header.Set("X-Gitlab-Event", "Issue Hook")
@@ -1107,6 +1234,7 @@ func TestHandleGitLabIssueEvent_Reopen(t *testing.T) {
 		Namespace:     "testorg-issue-reopen",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -1119,10 +1247,9 @@ func TestHandleGitLabIssueEvent_Reopen(t *testing.T) {
 	})
 
 	// Seed + close.
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	for _, p := range []string{
-		`{"object_kind":"issue","object_attributes":{"iid":13,"title":"Reopen me","description":"","action":"open"},"project":{"id":102,"path_with_namespace":"testorg-issue-reopen/repo","namespace":"testorg-issue-reopen"},"labels":[{"title":"agent"}],"assignees":[]}`,
-		`{"object_kind":"issue","object_attributes":{"iid":13,"title":"Reopen me","description":"","action":"close"},"project":{"id":102,"path_with_namespace":"testorg-issue-reopen/repo","namespace":"testorg-issue-reopen"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":13,"title":"Reopen me","description":"","action":"open","state":"opened"},"project":{"id":102,"path_with_namespace":"testorg-issue-reopen/repo","namespace":"testorg-issue-reopen"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":13,"title":"Reopen me","description":"","action":"close","state":"closed"},"project":{"id":102,"path_with_namespace":"testorg-issue-reopen/repo","namespace":"testorg-issue-reopen"},"labels":[{"title":"agent"}],"assignees":[]}`,
 	} {
 		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(p))
 		req.Header.Set("X-Gitlab-Token", "s")
@@ -1135,7 +1262,7 @@ func TestHandleGitLabIssueEvent_Reopen(t *testing.T) {
 	})
 
 	// Reopen.
-	reopenPayload := `{"object_kind":"issue","object_attributes":{"iid":13,"title":"Reopen me","description":"","action":"reopen"},"project":{"id":102,"path_with_namespace":"testorg-issue-reopen/repo","namespace":"testorg-issue-reopen"},"labels":[{"title":"agent"}],"assignees":[]}`
+	reopenPayload := `{"object_kind":"issue","object_attributes":{"iid":13,"title":"Reopen me","description":"","action":"reopen","state":"opened"},"project":{"id":102,"path_with_namespace":"testorg-issue-reopen/repo","namespace":"testorg-issue-reopen"},"labels":[{"title":"agent"}],"assignees":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(reopenPayload))
 	req.Header.Set("X-Gitlab-Token", "s")
 	req.Header.Set("X-Gitlab-Event", "Issue Hook")
@@ -1144,6 +1271,127 @@ func TestHandleGitLabIssueEvent_Reopen(t *testing.T) {
 	issue, _ := testHandler.Queries.GetIssue(ctx, row.IssueID)
 	if issue.Status != "in_progress" {
 		t.Errorf("status: got %q, want %q", issue.Status, "in_progress")
+	}
+}
+
+// TestHandleGitLabIssueEvent_ReopenThenUpdateWithoutLabelsStaysInProgress is the
+// regression for reopen→cancelled: after close/reopen, a follow-up update that
+// omits labels (or sends labels:[]) must NOT cancel the Multica issue. Cancel
+// requires an explicit changes.labels removal of the sync trigger.
+func TestHandleGitLabIssueEvent_ReopenThenUpdateWithoutLabelsStaysInProgress(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-reopen-stay",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		WebhookSecret: "s",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	for _, p := range []string{
+		`{"object_kind":"issue","object_attributes":{"iid":14,"title":"Stay open","description":"","action":"open","state":"opened"},"project":{"id":103,"path_with_namespace":"testorg-issue-reopen-stay/repo","namespace":"testorg-issue-reopen-stay"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":14,"title":"Stay open","description":"","action":"close","state":"closed"},"project":{"id":103,"path_with_namespace":"testorg-issue-reopen-stay/repo","namespace":"testorg-issue-reopen-stay"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":14,"title":"Stay open","description":"","action":"reopen","state":"opened"},"project":{"id":103,"path_with_namespace":"testorg-issue-reopen-stay/repo","namespace":"testorg-issue-reopen-stay"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		// Follow-up update with empty labels and no changes.labels — previously
+		// this incorrectly cancelled the reopened issue.
+		`{"object_kind":"issue","object_attributes":{"iid":14,"title":"Stay open","description":"edited","action":"update","state":"opened"},"project":{"id":103,"path_with_namespace":"testorg-issue-reopen-stay/repo","namespace":"testorg-issue-reopen-stay"},"labels":[],"assignees":[]}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(p))
+		req.Header.Set("X-Gitlab-Token", "s")
+		req.Header.Set("X-Gitlab-Event", "Issue Hook")
+		testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+	}
+
+	row, err := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-issue-reopen-stay/repo", GlIssueIid: 14,
+	})
+	if err != nil {
+		t.Fatalf("gitlab_issue not found: %v", err)
+	}
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if issue.Status != "in_progress" {
+		t.Errorf("after reopen + label-less update: status = %q, want in_progress (not cancelled)", issue.Status)
+	}
+}
+
+// TestHandleGitLabIssueEvent_ReopenViaStateChange tests reopen detected from
+// changes.state closed→opened when action is update (not action=reopen).
+func TestHandleGitLabIssueEvent_ReopenViaStateChange(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-reopen-state",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		WebhookSecret: "s",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	for _, p := range []string{
+		`{"object_kind":"issue","object_attributes":{"iid":15,"title":"State reopen","description":"","action":"open","state":"opened"},"project":{"id":104,"path_with_namespace":"testorg-issue-reopen-state/repo","namespace":"testorg-issue-reopen-state"},"labels":[{"title":"agent"}],"assignees":[]}`,
+		`{"object_kind":"issue","object_attributes":{"iid":15,"title":"State reopen","description":"","action":"close","state":"closed"},"project":{"id":104,"path_with_namespace":"testorg-issue-reopen-state/repo","namespace":"testorg-issue-reopen-state"},"labels":[{"title":"agent"}],"assignees":[]}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(p))
+		req.Header.Set("X-Gitlab-Token", "s")
+		req.Header.Set("X-Gitlab-Event", "Issue Hook")
+		testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+	}
+
+	row, _ := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-issue-reopen-state/repo", GlIssueIid: 15,
+	})
+
+	reopenPayload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 15, "title": "State reopen", "description": "", "action": "update", "state": "opened"},
+		"project": {"id": 104, "path_with_namespace": "testorg-issue-reopen-state/repo", "namespace": "testorg-issue-reopen-state"},
+		"labels": [{"title": "agent"}],
+		"assignees": [],
+		"changes": {"state": {"previous": "closed", "current": "opened"}}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(reopenPayload))
+	req.Header.Set("X-Gitlab-Token", "s")
+	req.Header.Set("X-Gitlab-Event", "Issue Hook")
+	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if issue.Status != "in_progress" {
+		t.Errorf("status: got %q, want in_progress", issue.Status)
 	}
 }
 
@@ -1162,6 +1410,7 @@ func TestHandleGitLabNoteEvent_CreatesComment(t *testing.T) {
 		Namespace:     "testorg-note-create",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -1182,7 +1431,6 @@ func TestHandleGitLabNoteEvent_CreatesComment(t *testing.T) {
 	})
 
 	// Create an issue via Issue Hook first.
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	issuePayload := `{"object_kind":"issue","object_attributes":{"iid":20,"title":"Note target","description":"","action":"open"},"project":{"id":200,"path_with_namespace":"testorg-note-create/repo","namespace":"testorg-note-create"},"labels":[{"title":"agent"}],"assignees":[]}`
 	issueReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(issuePayload))
 	issueReq.Header.Set("X-Gitlab-Token", "s")
@@ -1292,6 +1540,7 @@ func TestHandleGitLabNoteEvent_DuplicateSkipped(t *testing.T) {
 		Namespace:     "testorg-note-dup",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -1304,7 +1553,6 @@ func TestHandleGitLabNoteEvent_DuplicateSkipped(t *testing.T) {
 	})
 
 	// Create issue.
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	issuePayload := `{"object_kind":"issue","object_attributes":{"iid":21,"title":"Dup note target","description":"","action":"open"},"project":{"id":201,"path_with_namespace":"testorg-note-dup/repo","namespace":"testorg-note-dup"},"labels":[{"title":"agent"}],"assignees":[]}`
 	issueReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(issuePayload))
 	issueReq.Header.Set("X-Gitlab-Token", "s")
@@ -1347,6 +1595,7 @@ func TestHandleGitLabNoteEvent_SentinelSkipped(t *testing.T) {
 		Namespace:     "testorg-sentinel",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -1358,7 +1607,6 @@ func TestHandleGitLabNoteEvent_SentinelSkipped(t *testing.T) {
 		})
 	})
 
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	issuePayload := `{"object_kind":"issue","object_attributes":{"iid":31,"title":"Sentinel","description":"","action":"open"},"project":{"id":301,"path_with_namespace":"testorg-sentinel/repo","namespace":"testorg-sentinel"},"labels":[{"title":"agent"}],"assignees":[]}`
 	issueReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(issuePayload))
 	issueReq.Header.Set("X-Gitlab-Token", "s")
@@ -1404,6 +1652,7 @@ func TestHandleGitLabNoteEvent_DualWriteLinksExistingComment(t *testing.T) {
 		Namespace:     "testorg-dualwrite",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -1415,7 +1664,6 @@ func TestHandleGitLabNoteEvent_DualWriteLinksExistingComment(t *testing.T) {
 		})
 	})
 
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	issuePayload := `{"object_kind":"issue","object_attributes":{"iid":32,"title":"Dual write","description":"","action":"open"},"project":{"id":302,"path_with_namespace":"testorg-dualwrite/repo","namespace":"testorg-dualwrite"},"labels":[{"title":"agent"}],"assignees":[]}`
 	issueReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(issuePayload))
 	issueReq.Header.Set("X-Gitlab-Token", "s")
@@ -1493,6 +1741,7 @@ func TestGetGitLabIssueForIssue(t *testing.T) {
 		Namespace:     "testorg-get-issue",
 		NamespaceType: "group",
 		AccessToken:   "dummy",
+		WebhookSecret: "s",
 		ConnectedByID: userUUID,
 	})
 	if err != nil {
@@ -1505,7 +1754,6 @@ func TestGetGitLabIssueForIssue(t *testing.T) {
 	})
 
 	// Create issue via webhook.
-	t.Setenv("GITLAB_WEBHOOK_SECRET", "s")
 	issuePayload := `{"object_kind":"issue","object_attributes":{"iid":40,"title":"Get me","description":"","action":"open"},"project":{"id":400,"path_with_namespace":"testorg-get-issue/repo","namespace":"testorg-get-issue"},"labels":[{"title":"agent"}],"assignees":[{"username":"getuser"}]}`
 	issueReq := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(issuePayload))
 	issueReq.Header.Set("X-Gitlab-Token", "s")

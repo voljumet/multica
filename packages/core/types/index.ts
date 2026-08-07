@@ -133,6 +133,7 @@ export type {
   GitLabConnection,
   GitLabMergeRequest,
   GitLabIssue,
+  GitLabUserLink,
   ListGitLabConnectionsResponse,
 } from "./gitlab";
 export type {
