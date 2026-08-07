@@ -814,9 +814,12 @@ if (!gotTheLock) {
         return;
       }
 
+      const notificationBody = [payload.workspaceName, payload.body]
+        .filter(Boolean)
+        .join("\n");
       const notification = new Notification({
         title: payload.title,
-        body: payload.body,
+        body: notificationBody,
       });
       const notificationSessionGeneration = authSessionGeneration;
       notification.on("click", () => {
@@ -829,6 +832,19 @@ if (!gotTheLock) {
           slug: payload.slug,
           itemId: payload.itemId,
           issueKey: payload.issueKey,
+        });
+      });
+      notification.actions = [{ type: "button", text: "Turn Off Notifications" }];
+      notification.on("action", (_, actionIndex) => {
+        if (actionIndex !== 0) return;
+        if (notificationSessionGeneration !== authSessionGeneration) return;
+        // Send directly without focusing — muting should not raise the app.
+        const targetWindow =
+          mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        if (!targetWindow) return;
+        targetWindow.webContents.send("notification:mute-issue", {
+          slug: payload.slug,
+          issueId: payload.issueKey,
         });
       });
       notification.show();

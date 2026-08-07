@@ -881,8 +881,22 @@ class ApiClient {
     await this.fetch(`/api/issues/${issueId}/subscribe`, { method: "POST" });
   }
 
-  async unsubscribeFromIssue(issueId: string): Promise<void> {
-    await this.fetch(`/api/issues/${issueId}/unsubscribe`, { method: "POST" });
+  async unsubscribeFromIssue(
+    issueId: string,
+    workspaceSlug?: string,
+  ): Promise<void> {
+    await this.fetch(`/api/issues/${issueId}/unsubscribe`, {
+      method: "POST",
+      // Pass the source workspace slug explicitly when provided. The fetch
+      // helper only sets X-Workspace-Slug from getCurrentSlug() when the
+      // header is absent, so this explicit value wins — correct when the user
+      // is viewing a different workspace at the moment the notification action
+      // fires (e.g. long-pressing a notification from workspace B while
+      // workspace A is active).
+      ...(workspaceSlug
+        ? { headers: { "X-Workspace-Slug": workspaceSlug } }
+        : {}),
+    });
   }
 
   // --- Labels ---

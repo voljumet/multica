@@ -181,6 +181,12 @@ const desktopAPI = {
       issueKey: string;
     }) => void,
   ) => subscribeToMainRendererChannel("inbox:open", callback),
+  /** Subscribe to "mute this issue's notifications" requests from the main
+   *  process when the user clicks the notification action button. Returns
+   *  an unsubscribe function. */
+  onNotificationMuteIssue: (
+    callback: (payload: { slug: string; issueId: string }) => void,
+  ) => subscribeToMainRendererChannel("notification:mute-issue", callback),
   /** Listen for native macOS back/forward swipe gestures. */
   onNavigationGesture: (callback: (gesture: NavigationGesture) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, gesture: unknown) => {

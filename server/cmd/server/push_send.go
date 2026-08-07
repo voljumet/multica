@@ -17,14 +17,17 @@ var expoPushURL = "https://exp.host/--/api/v2/push/send"
 type expoPushMessage struct {
 	To    string         `json:"to"`
 	Title string         `json:"title"`
+	Body  string         `json:"body,omitempty"`
 	Sound string         `json:"sound"`
 	Data  map[string]any `json:"data,omitempty"`
 }
 
 // sendPushDirect posts messages to the Expo Push API in a goroutine.
 // Errors are logged and never returned. Separated from sendPushNotifications
-// so tests can stub the HTTP layer.
-func sendPushDirect(tokens []string, title, workspaceSlug, issueID string) {
+// so tests can stub the HTTP layer. workspaceName is used as the notification
+// body; the iOS category identifier is set to "issue_notification" for
+// action button registration.
+func sendPushDirect(tokens []string, title, workspaceSlug, issueID, workspaceName string) {
 	if len(tokens) == 0 {
 		return
 	}
@@ -34,10 +37,12 @@ func sendPushDirect(tokens []string, title, workspaceSlug, issueID string) {
 		messages = append(messages, expoPushMessage{
 			To:    tok,
 			Title: title,
+			Body:  workspaceName,
 			Sound: "default",
 			Data: map[string]any{
 				"workspace_slug": workspaceSlug,
 				"issue_id":       issueID,
+				"category":       "issue_notification",
 			},
 		})
 	}
@@ -81,7 +86,7 @@ func sendPushDirect(tokens []string, title, workspaceSlug, issueID string) {
 // sendPushNotifications dispatches an Expo push to every registered device
 // for userID. Fire-and-forget: errors are logged, never returned.
 // workspaceSlug and issueID are included in the notification data for
-// deep-linking on tap.
+// deep-linking on tap; workspaceName is shown as the notification body.
 func sendPushNotifications(
 	ctx context.Context,
 	queries *db.Queries,
@@ -89,6 +94,7 @@ func sendPushNotifications(
 	title string,
 	workspaceSlug string,
 	issueID string,
+	workspaceName string,
 ) {
 	tokens, err := queries.ListPushTokensByUser(ctx, parseUUID(userID))
 	if err != nil || len(tokens) == 0 {
@@ -103,7 +109,7 @@ func sendPushNotifications(
 		tokenStrings = append(tokenStrings, t.Token)
 	}
 
-	sendPushDirect(tokenStrings, title, workspaceSlug, issueID)
+	sendPushDirect(tokenStrings, title, workspaceSlug, issueID, workspaceName)
 }
 
 // workspaceSlugByID returns the slug for a workspace ID, or "" on error.
@@ -113,4 +119,13 @@ func workspaceSlugByID(ctx context.Context, queries *db.Queries, workspaceID str
 		return ""
 	}
 	return ws.Slug
+}
+
+// workspaceNameByID returns the name for a workspace ID, or "" on error.
+func workspaceNameByID(ctx context.Context, queries *db.Queries, workspaceID string) string {
+	ws, err := queries.GetWorkspace(ctx, parseUUID(workspaceID))
+	if err != nil {
+		return ""
+	}
+	return ws.Name
 }

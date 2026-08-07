@@ -28,6 +28,7 @@ export interface NativeNotificationPayload {
   issueKey: string;
   title: string;
   body: string;
+  workspaceName?: string;
 }
 
 export function parseNativeNotificationPayload(
@@ -35,7 +36,10 @@ export function parseNativeNotificationPayload(
 ): NativeNotificationPayload | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Record<string, unknown>;
-  const limits: Record<keyof NativeNotificationPayload, number> = {
+  const limits: Record<
+    Exclude<keyof NativeNotificationPayload, "workspaceName">,
+    number
+  > = {
     slug: 256,
     itemId: 256,
     issueKey: 256,
@@ -43,7 +47,7 @@ export function parseNativeNotificationPayload(
     body: 2_000,
   };
   const result = {} as NativeNotificationPayload;
-  for (const key of Object.keys(limits) as (keyof NativeNotificationPayload)[]) {
+  for (const key of Object.keys(limits) as (keyof typeof limits)[]) {
     const field = candidate[key];
     const mayBeEmpty = key === "slug" || key === "body";
     if (
@@ -54,6 +58,12 @@ export function parseNativeNotificationPayload(
       return null;
     }
     result[key] = field;
+  }
+  // workspaceName is optional — accept valid strings up to 256 chars, silently
+  // drop anything else so old desktop builds keep working without this field.
+  const wn = candidate["workspaceName"];
+  if (typeof wn === "string" && wn.length <= 256) {
+    result.workspaceName = wn;
   }
   return result;
 }

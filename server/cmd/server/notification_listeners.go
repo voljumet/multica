@@ -19,7 +19,6 @@ type mention struct {
 	ID   string // user_id, agent_id, issue_id, or "all"
 }
 
-
 // statusLabels maps DB status values to human-readable labels for notifications.
 var statusLabels = map[string]string{
 	"backlog":     "Backlog",
@@ -78,19 +77,19 @@ var parentBubbleNotifTypes = map[string]bool{
 // notifTypeToGroup maps each InboxItemType to a user-configurable preference
 // group. Types not in this map are always delivered (not configurable).
 var notifTypeToGroup = map[string]string{
-	"issue_assigned":  "assignments",
-	"unassigned":      "assignments",
-	"assignee_changed": "assignments",
-	"status_changed":  "status_changes",
-	"new_comment":     "comments",
-	"mentioned":       "comments",
-	"priority_changed": "updates",
+	"issue_assigned":     "assignments",
+	"unassigned":         "assignments",
+	"assignee_changed":   "assignments",
+	"status_changed":     "status_changes",
+	"new_comment":        "comments",
+	"mentioned":          "comments",
+	"priority_changed":   "updates",
 	"start_date_changed": "updates",
-	"due_date_changed": "updates",
-	"task_completed":  "agent_activity",
-	"task_failed":     "agent_activity",
-	"agent_blocked":   "agent_activity",
-	"agent_completed": "agent_activity",
+	"due_date_changed":   "updates",
+	"task_completed":     "agent_activity",
+	"task_failed":        "agent_activity",
+	"agent_blocked":      "agent_activity",
+	"agent_completed":    "agent_activity",
 }
 
 // isNotifMuted returns true if the given notification type is muted for a user
@@ -215,6 +214,7 @@ func archiveStaleTaskFailedInbox(
 // If the issue has a parent and the notification type is in the bubble
 // allowlist, parent issue subscribers are also notified (deduplicated
 // against direct subscribers).
+// Returns the set of member IDs that were notified (for deduplication by callers).
 func notifySubscribers(
 	ctx context.Context,
 	queries *db.Queries,
@@ -229,14 +229,14 @@ func notifySubscribers(
 	title string,
 	body string,
 	details []byte,
-) {
+) map[string]bool {
 	notified := notifyIssueSubscribers(ctx, queries, bus,
 		issueID, issueID, issueStatus, workspaceID, e, exclude,
 		notifType, severity, title, body, details)
 
 	// Only a small allowlist of event types bubbles to parent subscribers.
 	if !parentBubbleNotifTypes[notifType] {
-		return
+		return notified
 	}
 
 	// Also notify parent issue subscribers if this is a sub-issue.
@@ -244,10 +244,10 @@ func notifySubscribers(
 	if err != nil {
 		slog.Error("failed to get issue for parent notification",
 			"issue_id", issueID, "error", err)
-		return
+		return notified
 	}
 	if !issue.ParentIssueID.Valid {
-		return
+		return notified
 	}
 
 	// Merge already-notified IDs into exclude set for parent subscribers.
@@ -262,9 +262,13 @@ func notifySubscribers(
 	// Query subscribers from the parent issue, but the inbox item still
 	// points to the sub-issue so the user navigates to the actual change.
 	parentID := util.UUIDToString(issue.ParentIssueID)
-	notifyIssueSubscribers(ctx, queries, bus,
+	parentNotified := notifyIssueSubscribers(ctx, queries, bus,
 		parentID, issueID, issueStatus, workspaceID, e, parentExclude,
 		notifType, severity, title, body, details)
+	for id := range parentNotified {
+		notified[id] = true
+	}
+	return notified
 }
 
 // notifyIssueSubscribers sends inbox notifications to subscribers of
@@ -306,8 +310,9 @@ func notifyIssueSubscribers(
 	}
 	userPrefs := loadUserPrefs(ctx, queries, workspaceID, memberIDs)
 
-	// Look up workspace slug once for push deep-linking (shared by all subscribers).
+	// Look up workspace slug and name once for push deep-linking (shared by all subscribers).
 	wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
+	wsName := workspaceNameByID(ctx, queries, workspaceID)
 
 	for _, sub := range subs {
 		// Only notify member-type subscribers (not agents)
@@ -363,7 +368,7 @@ func notifyIssueSubscribers(
 		})
 		// Dispatch push notification to the subscriber's registered devices.
 		issueIDStr := util.UUIDToString(item.IssueID)
-		sendPushNotifications(ctx, queries, subID, item.Title, wsSlug, issueIDStr)
+		sendPushNotifications(ctx, queries, subID, item.Title, wsSlug, issueIDStr, wsName)
 	}
 
 	return notified
@@ -431,7 +436,8 @@ func notifyDirect(
 	// Dispatch push notification if recipient is a member.
 	if recipientType == "member" {
 		wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
-		sendPushNotifications(ctx, queries, recipientID, item.Title, wsSlug, issueID)
+		wsName := workspaceNameByID(ctx, queries, workspaceID)
+		sendPushNotifications(ctx, queries, recipientID, item.Title, wsSlug, issueID, wsName)
 	}
 }
 
@@ -509,8 +515,9 @@ func notifyMentionedMembers(
 	}
 	mentionPrefs := loadUserPrefs(context.Background(), queries, e.WorkspaceID, mentionUserIDs)
 
-	// Workspace slug for push deep-linking (shared by all recipients).
+	// Workspace slug and name for push deep-linking (shared by all recipients).
 	wsSlug := workspaceSlugByID(context.Background(), queries, e.WorkspaceID)
+	wsName := workspaceNameByID(context.Background(), queries, e.WorkspaceID)
 
 	for id := range recipientIDs {
 		if id == e.ActorID || skip[id] {
@@ -546,7 +553,7 @@ func notifyMentionedMembers(
 			Payload:     map[string]any{"item": resp},
 		})
 		// Dispatch push notification to the mentioned member's devices.
-		sendPushNotifications(context.Background(), queries, id, item.Title, wsSlug, issueID)
+		sendPushNotifications(context.Background(), queries, id, item.Title, wsSlug, issueID, wsName)
 	}
 }
 
@@ -809,15 +816,19 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 			})
 		}
 
-		notifySubscribers(ctx, queries, bus, issueID, issueStatus, e.WorkspaceID, e,
+		alreadyNotified := notifySubscribers(ctx, queries, bus, issueID, issueStatus, e.WorkspaceID, e,
 			nil, "new_comment", "info",
 			issueTitle, commentContent,
 			commentDetails)
 
-		// Notify @mentions in comment content.
+		// Notify @mentions in comment content, skipping anyone already notified
+		// via the subscriber path to avoid duplicate push notifications.
 		mentions := parseMentions(commentContent)
 		if len(mentions) > 0 {
 			skip := map[string]bool{e.ActorID: true}
+			for id := range alreadyNotified {
+				skip[id] = true
+			}
 			notifyMentionedMembers(bus, queries, e, mentions, issueID, issueTitle, issueStatus,
 				issueTitle, skip, commentDetails)
 		}
