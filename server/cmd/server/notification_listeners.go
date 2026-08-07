@@ -375,8 +375,9 @@ func notifyIssueSubscribers(
 	}
 	userPrefs := loadUserPrefs(ctx, queries, workspaceID, memberIDs)
 
-	// Look up workspace slug once for push deep-linking (shared by all subscribers).
+	// Look up workspace slug and name once for push deep-linking (shared by all subscribers).
 	wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
+	wsName := workspaceNameByID(ctx, queries, workspaceID)
 
 	for _, sub := range subs {
 		// Only notify member-type subscribers (not agents)
@@ -439,7 +440,7 @@ func notifyIssueSubscribers(
 		})
 		// Dispatch push notification to the subscriber's registered devices.
 		issueIDStr := util.UUIDToString(item.IssueID)
-		sendPushNotifications(ctx, queries, subID, item.Title, wsSlug, issueIDStr)
+		sendPushNotifications(ctx, queries, subID, item.Title, wsSlug, issueIDStr, wsName)
 	}
 
 	return notified, tierSuppressed
@@ -507,7 +508,8 @@ func notifyDirect(
 	// Dispatch push notification if recipient is a member.
 	if recipientType == "member" {
 		wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
-		sendPushNotifications(ctx, queries, recipientID, item.Title, wsSlug, issueID)
+		wsName := workspaceNameByID(ctx, queries, workspaceID)
+		sendPushNotifications(ctx, queries, recipientID, item.Title, wsSlug, issueID, wsName)
 	}
 }
 
@@ -585,8 +587,9 @@ func notifyMentionedMembers(
 	}
 	mentionPrefs := loadUserPrefs(context.Background(), queries, e.WorkspaceID, mentionUserIDs)
 
-	// Workspace slug for push deep-linking (shared by all recipients).
+	// Workspace slug and name for push deep-linking (shared by all recipients).
 	wsSlug := workspaceSlugByID(context.Background(), queries, e.WorkspaceID)
+	wsName := workspaceNameByID(context.Background(), queries, e.WorkspaceID)
 
 	for id := range recipientIDs {
 		if id == e.ActorID || skip[id] {
@@ -622,7 +625,7 @@ func notifyMentionedMembers(
 			Payload:     map[string]any{"item": resp},
 		})
 		// Dispatch push notification to the mentioned member's devices.
-		sendPushNotifications(context.Background(), queries, id, item.Title, wsSlug, issueID)
+		sendPushNotifications(context.Background(), queries, id, item.Title, wsSlug, issueID, wsName)
 	}
 }
 

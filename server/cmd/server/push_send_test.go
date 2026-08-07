@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -20,7 +21,7 @@ func TestSendPushDirect_SkipsOnNoTokens(t *testing.T) {
 	expoPushURL = srv.URL
 	defer func() { expoPushURL = origURL }()
 
-	sendPushDirect(nil, "Test title", "my-workspace", "issue-id-123")
+	sendPushDirect(nil, "Test title", "my-workspace", "issue-id-123", "My Workspace")
 	time.Sleep(100 * time.Millisecond)
 
 	if called {
@@ -51,11 +52,10 @@ func TestSendPushDirect_FiresForExpoToken(t *testing.T) {
 	expoPushURL = srv.URL
 	defer func() { expoPushURL = origURL }()
 
-	sendPushDirect([]string{"ExponentPushToken[abc123]"}, "New comment", "my-workspace", "issue-id-456")
+	sendPushDirect([]string{"ExponentPushToken[abc123]"}, "New comment", "my-workspace", "issue-id-456", "My Workspace")
 
 	select {
 	case <-done:
-		// request was received — success
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for push HTTP request")
 	}
@@ -67,8 +67,32 @@ func TestSendPushDirect_FiresForExpoToken(t *testing.T) {
 	if body == "" {
 		t.Fatal("expected non-empty request body")
 	}
-	if len(body) == 0 {
-		t.Fatal("expected request body to contain push message")
+
+	var msgs []struct {
+		Title string         `json:"title"`
+		Body  string         `json:"body"`
+		Data  map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &msgs); err != nil {
+		t.Fatalf("failed to parse request body: %v", err)
+	}
+	if len(msgs) == 0 {
+		t.Fatal("expected at least one push message")
+	}
+	msg := msgs[0]
+	if msg.Title != "New comment" {
+		t.Errorf("expected title %q, got %q", "New comment", msg.Title)
+	}
+	if msg.Body != "My Workspace" {
+		t.Errorf("expected body %q, got %q", "My Workspace", msg.Body)
+	}
+	cat, _ := msg.Data["category"].(string)
+	if cat != "issue_notification" {
+		t.Errorf("expected data.category %q, got %q", "issue_notification", cat)
+	}
+	wsSlug, _ := msg.Data["workspace_slug"].(string)
+	if wsSlug != "my-workspace" {
+		t.Errorf("expected data.workspace_slug %q, got %q", "my-workspace", wsSlug)
 	}
 }
 
