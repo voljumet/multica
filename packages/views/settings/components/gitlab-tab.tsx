@@ -15,6 +15,9 @@ import { useCurrentWorkspace } from "@multica/core/paths";
 import { memberListOptions, workspaceKeys } from "@multica/core/workspace/queries";
 import {
   gitlabConnectionsOptions,
+  gitlabUserLinkOptions,
+  useUpsertGitLabUserLink,
+  useDeleteGitLabUserLink,
   useDeleteGitLabConnection,
   useRotateGitLabWebhookSecret,
   deriveGitLabSettings,
@@ -44,6 +47,7 @@ export function GitLabTab() {
   const [namespace, setNamespace] = useState("");
   const [savingKey, setSavingKey] = useState<SettingsKey | null>(null);
   const [rotatingId, setRotatingId] = useState<string | null>(null);
+  const [identityDraft, setIdentityDraft] = useState("");
 
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
@@ -59,6 +63,9 @@ export function GitLabTab() {
 
   const deleteMutation = useDeleteGitLabConnection(wsId);
   const rotateMutation = useRotateGitLabWebhookSecret(wsId);
+  const { data: userLink } = useQuery({ ...gitlabUserLinkOptions(wsId), enabled: !!wsId && canView });
+  const upsertLinkMutation = useUpsertGitLabUserLink(wsId);
+  const deleteLinkMutation = useDeleteGitLabUserLink(wsId);
 
   const flags = deriveGitLabSettings(workspace);
   const [issueSyncLabelDraft, setIssueSyncLabelDraft] = useState(flags.issueSyncLabel);
@@ -69,6 +76,10 @@ export function GitLabTab() {
     // identity prevents that response from wiping a newer local keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on workspace identity
   }, [workspace?.id]);
+
+  useEffect(() => {
+    setIdentityDraft(userLink?.gitlab_username ?? "");
+  }, [userLink?.gitlab_username]);
 
   const persistWorkspaceSettings = useCallback(
     async (patch: Record<string, unknown>) => {
@@ -146,6 +157,24 @@ export function GitLabTab() {
       toast.error(e instanceof Error ? e.message : t(($) => $.gitlab.webhook_secret_rotate_failed));
     } finally {
       setRotatingId(null);
+    }
+  }
+
+  async function handleSaveIdentity() {
+    try {
+      await upsertLinkMutation.mutateAsync(identityDraft.trim());
+      toast.success(t(($) => $.gitlab.toast_identity_linked));
+    } catch {
+      toast.error(t(($) => $.gitlab.toast_identity_failed));
+    }
+  }
+
+  async function handleClearIdentity() {
+    try {
+      await deleteLinkMutation.mutateAsync();
+      toast.success(t(($) => $.gitlab.toast_identity_unlinked));
+    } catch {
+      toast.error(t(($) => $.gitlab.toast_identity_failed));
     }
   }
 
@@ -253,6 +282,52 @@ export function GitLabTab() {
           </CardContent>
         </Card>
       </section>
+
+      {configured && connections.length > 0 && canView && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold">{t(($) => $.gitlab.section_identity)}</h2>
+          <Card>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {t(($) => $.gitlab.identity_description)}
+              </p>
+              {userLink?.gitlab_username && (
+                <p className="text-sm font-medium">
+                  {t(($) => $.gitlab.identity_linked, { username: userLink.gitlab_username })}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <Input
+                  id="gitlab-identity-username"
+                  placeholder={t(($) => $.gitlab.identity_username_placeholder)}
+                  value={identityDraft}
+                  onChange={(e) => setIdentityDraft(e.target.value)}
+                  className="max-w-xs"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <Button
+                  variant="outline"
+                  onClick={handleSaveIdentity}
+                  disabled={!identityDraft.trim() || upsertLinkMutation.isPending}
+                >
+                  {t(($) => $.gitlab.identity_save)}
+                </Button>
+                {userLink?.gitlab_username && (
+                  <Button
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    onClick={handleClearIdentity}
+                    disabled={deleteLinkMutation.isPending}
+                  >
+                    {t(($) => $.gitlab.identity_clear)}
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {configured && connections.length > 0 && wsId && (
         <section className="space-y-3">
