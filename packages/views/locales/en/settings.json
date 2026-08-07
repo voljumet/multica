@@ -803,7 +803,17 @@
     "webhook_secret_rotate_failed": "Failed to rotate webhook secret",
     "toast_failed": "Failed to update GitLab settings",
     "toast_disconnected": "GitLab disconnected",
-    "toast_disconnect_failed": "Failed to disconnect GitLab"
+    "toast_disconnect_failed": "Failed to disconnect GitLab",
+    "section_identity": "Your GitLab identity",
+    "identity_description": "Link your GitLab username so comments you write in GitLab appear in Multica attributed to your account.",
+    "identity_username_label": "GitLab username",
+    "identity_username_placeholder": "e.g. johndoe",
+    "identity_linked": "Linked as @{{username}}",
+    "identity_save": "Save",
+    "identity_clear": "Unlink",
+    "toast_identity_linked": "GitLab account linked",
+    "toast_identity_unlinked": "GitLab account unlinked",
+    "toast_identity_failed": "Failed to update GitLab identity"
   },
   "members": {
     "section_title": "Members ({{count}})",

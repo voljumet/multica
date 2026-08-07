@@ -12,7 +12,7 @@ import (
 )
 
 // expoPushURL is a var (not const) so tests can override it with a local server.
-var expoPushURL = "https://exp.host/api/v2/push/send"
+var expoPushURL = "https://exp.host/--/api/v2/push/send"
 
 type expoPushMessage struct {
 	To    string         `json:"to"`

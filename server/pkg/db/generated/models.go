@@ -662,6 +662,14 @@ type GitlabMergeRequest struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type GitlabUserLink struct {
+	ID             pgtype.UUID        `json:"id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	MemberID       pgtype.UUID        `json:"member_id"`
+	GitlabUsername string             `json:"gitlab_username"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type InboxItem struct {
 	ID            pgtype.UUID        `json:"id"`
 	WorkspaceID   pgtype.UUID        `json:"workspace_id"`

@@ -1,4 +1,12 @@
-export { gitlabKeys, gitlabConnectionsOptions, issueMergeRequestsOptions, issueGitLabIssueOptions } from "./queries";
+export {
+  gitlabKeys,
+  gitlabConnectionsOptions,
+  gitlabUserLinkOptions,
+  useUpsertGitLabUserLink,
+  useDeleteGitLabUserLink,
+  issueMergeRequestsOptions,
+  issueGitLabIssueOptions,
+} from "./queries";
 export {
   useDeleteGitLabConnection,
   useRotateGitLabWebhookSecret,

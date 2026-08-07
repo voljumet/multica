@@ -482,7 +482,13 @@ func (h *Handler) handleGitLabNoteEvent(ctx context.Context, conn db.GitlabConne
 	authorType := "member"
 	authorID, ok := h.gitlabCreatorID(ctx, conn)
 	content := p.ObjectAttributes.Note
-	if agent, created, agentOK := h.ensureGitLabUserAgent(ctx, conn, p.User); agentOK {
+	if link, err := h.Queries.GetGitLabUserLinkByUsername(ctx, db.GetGitLabUserLinkByUsernameParams{
+		WorkspaceID:    conn.WorkspaceID,
+		GitlabUsername: p.User.Username,
+	}); err == nil {
+		// GitLab user is mapped to a Multica member — attribute directly.
+		authorID = link.MemberID
+	} else if agent, created, agentOK := h.ensureGitLabUserAgent(ctx, conn, p.User); agentOK {
 		authorType = "agent"
 		authorID = agent.ID
 		if created {

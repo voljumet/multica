@@ -37,6 +37,10 @@ export interface ListGitLabConnectionsResponse {
   gitlab_url?: string;
 }
 
+export interface GitLabUserLink {
+  gitlab_username: string | null;
+}
+
 export interface GitLabIssue {
   gl_issue_iid: number;
   project_path: string;

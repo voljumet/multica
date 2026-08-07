@@ -997,11 +997,14 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/vcs/connections/{connectionId}", h.DeleteVCSConnection)
 				})
 
-				// GitLab integration — listing is member-visible; connect/disconnect
-				// require admin.
+				// GitLab integration — listing and per-member identity are member-visible;
+				// connect/disconnect require admin.
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceMemberFromURL(queries, "id"))
 					r.Get("/gitlab/connections", h.ListGitLabConnections)
+					r.Get("/gitlab/user-link", h.GetGitLabUserLink)
+					r.Post("/gitlab/user-link", h.LinkGitLabUser)
+					r.Delete("/gitlab/user-link", h.UnlinkGitLabUser)
 				})
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))

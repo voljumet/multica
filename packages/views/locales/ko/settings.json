@@ -654,7 +654,17 @@
     "webhook_secret_rotate_failed": "웹훅 시크릿 교체에 실패했습니다",
     "toast_failed": "GitLab 설정 업데이트에 실패했습니다",
     "toast_disconnected": "GitLab 연결이 해제되었습니다",
-    "toast_disconnect_failed": "GitLab 연결 해제에 실패했습니다"
+    "toast_disconnect_failed": "GitLab 연결 해제에 실패했습니다",
+    "section_identity": "내 GitLab 계정",
+    "identity_description": "GitLab 사용자 이름을 등록하면 GitLab에서 작성한 댓글이 Multica에서 내 계정으로 표시됩니다.",
+    "identity_username_label": "GitLab 사용자 이름",
+    "identity_username_placeholder": "예: johndoe",
+    "identity_linked": "@{{username}}(으)로 연결됨",
+    "identity_save": "저장",
+    "identity_clear": "연결 해제",
+    "toast_identity_linked": "GitLab 계정이 연결되었습니다",
+    "toast_identity_unlinked": "GitLab 계정 연결이 해제되었습니다",
+    "toast_identity_failed": "GitLab 계정 업데이트에 실패했습니다"
   },
   "members": {
     "section_title": "멤버 ({{count}})",

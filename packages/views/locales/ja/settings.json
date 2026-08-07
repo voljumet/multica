@@ -802,7 +802,17 @@
     "webhook_secret_rotate_failed": "ウェブフックシークレットのローテーションに失敗しました",
     "toast_failed": "GitLab 設定の更新に失敗しました",
     "toast_disconnected": "GitLab を切断しました",
-    "toast_disconnect_failed": "GitLab の切断に失敗しました"
+    "toast_disconnect_failed": "GitLab の切断に失敗しました",
+    "section_identity": "あなたの GitLab アカウント",
+    "identity_description": "GitLab ユーザー名を登録すると、GitLab に書いたコメントが Multica でもあなたのアカウントに紐付いて表示されます。",
+    "identity_username_label": "GitLab ユーザー名",
+    "identity_username_placeholder": "例: johndoe",
+    "identity_linked": "@{{username}} として紐付け済み",
+    "identity_save": "保存",
+    "identity_clear": "解除",
+    "toast_identity_linked": "GitLab アカウントを紐付けました",
+    "toast_identity_unlinked": "GitLab アカウントの紐付けを解除しました",
+    "toast_identity_failed": "GitLab アカウントの更新に失敗しました"
   },
   "members": {
     "section_title": "メンバー（{{count}}）",

@@ -802,7 +802,17 @@
     "webhook_secret_rotate_failed": "轮换 Webhook 密钥失败",
     "toast_failed": "更新 GitLab 设置失败",
     "toast_disconnected": "已断开 GitLab 连接",
-    "toast_disconnect_failed": "断开 GitLab 连接失败"
+    "toast_disconnect_failed": "断开 GitLab 连接失败",
+    "section_identity": "你的 GitLab 身份",
+    "identity_description": "绑定你的 GitLab 用户名，让你在 GitLab 发表的评论在 Multica 中以你的账号显示。",
+    "identity_username_label": "GitLab 用户名",
+    "identity_username_placeholder": "例如 johndoe",
+    "identity_linked": "已绑定为 @{{username}}",
+    "identity_save": "保存",
+    "identity_clear": "解绑",
+    "toast_identity_linked": "已绑定 GitLab 账号",
+    "toast_identity_unlinked": "已解绑 GitLab 账号",
+    "toast_identity_failed": "更新 GitLab 身份失败"
   },
   "members": {
     "section_title": "成员（{{count}}）",
