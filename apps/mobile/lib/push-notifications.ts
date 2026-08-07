@@ -23,6 +23,20 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
   if (finalStatus !== "granted") return null;
 
+  // Register the iOS notification category that enables the long-press
+  // "Turn Off Notifications" action. Safe to call on every registration —
+  // Expo deduplicates it. Android ignores this silently.
+  await Notifications.setNotificationCategoryAsync("issue_notification", [
+    {
+      identifier: "mute_issue",
+      buttonTitle: "Turn Off Notifications",
+      options: {
+        isDestructive: false,
+        isAuthenticationRequired: false,
+      },
+    },
+  ]);
+
   const projectId =
     Constants.expoConfig?.extra?.eas?.projectId ??
     Constants.easConfig?.projectId;
