@@ -69,6 +69,11 @@ interface DesktopAPI {
       issueKey: string;
     }) => void,
   ) => () => void;
+  /** Listen for "mute this issue's notifications" requests when the user clicks
+   *  the notification action button. Returns an unsubscribe function. */
+  onNotificationMuteIssue: (
+    callback: (payload: { slug: string; issueId: string }) => void,
+  ) => () => void;
   /** Listen for native macOS back/forward swipe gestures. Returns an unsubscribe function. */
   onNavigationGesture: (callback: (gesture: NavigationGesture) => void) => () => void;
   /** Report the renderer's memory-router path for recovery diagnostics. */

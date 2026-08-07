@@ -855,6 +855,15 @@ if (!gotTheLock) {
           issueKey: payload.issueKey,
         });
       });
+      notification.actions = [{ type: "button", text: "Turn Off Notifications" }];
+      notification.on("action", (_, actionIndex) => {
+        if (actionIndex !== 0) return;
+        if (notificationSessionGeneration !== authSessionGeneration) return;
+        dispatchToMainRenderer("notification:mute-issue", {
+          slug: payload.slug,
+          issueId: payload.issueKey,
+        });
+      });
       notification.show();
     });
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
 import { useTabHistory } from "@/hooks/use-tab-history";
 import { useActiveTitleSync } from "@/hooks/use-tab-sync";
@@ -18,6 +19,8 @@ import { WorkspaceSlugProvider, paths, useCurrentWorkspace } from "@multica/core
 import { useNavigation } from "@multica/views/navigation";
 import { getCurrentSlug, subscribeToCurrentSlug } from "@multica/core/platform";
 import { useDesktopUnreadBadge } from "@multica/views/platform";
+import { issueKeys } from "@multica/core/issues/queries";
+import { api } from "@multica/core/api";
 import { DesktopNavigationProvider } from "@/platform/navigation";
 import { requestOpenTab } from "@/platform/tab-leave-guard";
 import { TabBar } from "./tab-bar";
@@ -213,6 +216,25 @@ function DesktopInboxBridge() {
       pushRef.current(paths.workspace(slug).settings());
     });
   }, []);
+
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    return window.desktopAPI.onNotificationMuteIssue(({ slug, issueId }) => {
+      if (!slug || !issueId) return;
+      void api
+        .unsubscribeFromIssue(issueId, undefined, undefined, slug)
+        .then(() => {
+          qc.invalidateQueries({ queryKey: issueKeys.subscribers(issueId) });
+        })
+        .catch(() => {
+          // Fire-and-forget: if the user was already unsubscribed or the
+          // network request fails, the notification action is still a no-op
+          // from the user's perspective — they'll see no new notifications
+          // regardless because the server-side gate is the authority.
+        });
+    });
+  }, [qc]);
 
   return null;
 }
