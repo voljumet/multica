@@ -19,7 +19,6 @@ type mention struct {
 	ID   string // user_id, agent_id, issue_id, or "all"
 }
 
-
 // statusLabels maps DB status values to human-readable labels for notifications.
 var statusLabels = map[string]string{
 	"backlog":     "Backlog",
@@ -78,19 +77,19 @@ var parentBubbleNotifTypes = map[string]bool{
 // notifTypeToGroup maps each InboxItemType to a user-configurable preference
 // group. Types not in this map are always delivered (not configurable).
 var notifTypeToGroup = map[string]string{
-	"issue_assigned":  "assignments",
-	"unassigned":      "assignments",
-	"assignee_changed": "assignments",
-	"status_changed":  "status_changes",
-	"new_comment":     "comments",
-	"mentioned":       "comments",
-	"priority_changed": "updates",
+	"issue_assigned":     "assignments",
+	"unassigned":         "assignments",
+	"assignee_changed":   "assignments",
+	"status_changed":     "status_changes",
+	"new_comment":        "comments",
+	"mentioned":          "comments",
+	"priority_changed":   "updates",
 	"start_date_changed": "updates",
-	"due_date_changed": "updates",
-	"task_completed":  "agent_activity",
-	"task_failed":     "agent_activity",
-	"agent_blocked":   "agent_activity",
-	"agent_completed": "agent_activity",
+	"due_date_changed":   "updates",
+	"task_completed":     "agent_activity",
+	"task_failed":        "agent_activity",
+	"agent_blocked":      "agent_activity",
+	"agent_completed":    "agent_activity",
 }
 
 // isNotifMuted returns true if the given notification type is muted for a user
@@ -306,8 +305,9 @@ func notifyIssueSubscribers(
 	}
 	userPrefs := loadUserPrefs(ctx, queries, workspaceID, memberIDs)
 
-	// Look up workspace slug once for push deep-linking (shared by all subscribers).
+	// Look up workspace slug and name once for push deep-linking (shared by all subscribers).
 	wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
+	wsName := workspaceNameByID(ctx, queries, workspaceID)
 
 	for _, sub := range subs {
 		// Only notify member-type subscribers (not agents)
@@ -363,7 +363,7 @@ func notifyIssueSubscribers(
 		})
 		// Dispatch push notification to the subscriber's registered devices.
 		issueIDStr := util.UUIDToString(item.IssueID)
-		sendPushNotifications(ctx, queries, subID, item.Title, wsSlug, issueIDStr)
+		sendPushNotifications(ctx, queries, subID, item.Title, wsSlug, issueIDStr, wsName)
 	}
 
 	return notified
@@ -431,7 +431,8 @@ func notifyDirect(
 	// Dispatch push notification if recipient is a member.
 	if recipientType == "member" {
 		wsSlug := workspaceSlugByID(ctx, queries, workspaceID)
-		sendPushNotifications(ctx, queries, recipientID, item.Title, wsSlug, issueID)
+		wsName := workspaceNameByID(ctx, queries, workspaceID)
+		sendPushNotifications(ctx, queries, recipientID, item.Title, wsSlug, issueID, wsName)
 	}
 }
 
@@ -509,8 +510,9 @@ func notifyMentionedMembers(
 	}
 	mentionPrefs := loadUserPrefs(context.Background(), queries, e.WorkspaceID, mentionUserIDs)
 
-	// Workspace slug for push deep-linking (shared by all recipients).
+	// Workspace slug and name for push deep-linking (shared by all recipients).
 	wsSlug := workspaceSlugByID(context.Background(), queries, e.WorkspaceID)
+	wsName := workspaceNameByID(context.Background(), queries, e.WorkspaceID)
 
 	for id := range recipientIDs {
 		if id == e.ActorID || skip[id] {
@@ -546,7 +548,7 @@ func notifyMentionedMembers(
 			Payload:     map[string]any{"item": resp},
 		})
 		// Dispatch push notification to the mentioned member's devices.
-		sendPushNotifications(context.Background(), queries, id, item.Title, wsSlug, issueID)
+		sendPushNotifications(context.Background(), queries, id, item.Title, wsSlug, issueID, wsName)
 	}
 }
 
