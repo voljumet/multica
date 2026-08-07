@@ -950,13 +950,21 @@ export class ApiClient {
     });
   }
 
-  async unsubscribeFromIssue(issueId: string, userId?: string, userType?: string): Promise<void> {
+  async unsubscribeFromIssue(
+    issueId: string,
+    userId?: string,
+    userType?: string,
+    workspaceSlug?: string,
+  ): Promise<void> {
     const body: Record<string, string> = {};
     if (userId) body.user_id = userId;
     if (userType) body.user_type = userType;
     await this.fetch(`/api/issues/${issueId}/unsubscribe`, {
       method: "POST",
       body: JSON.stringify(body),
+      // workspaceSlug overrides the active-workspace header so the mute action
+      // works even when the user is viewing a different workspace at the time.
+      headers: workspaceSlug ? { "X-Workspace-Slug": workspaceSlug } : undefined,
     });
   }
 

@@ -10,6 +10,7 @@ export const MAIN_RENDERER_MESSAGE_CHANNELS = [
   "auth:token",
   "invite:open",
   "inbox:open",
+  "notification:mute-issue",
 ] as const;
 
 export type MainRendererMessageChannel =
