@@ -814,9 +814,12 @@ if (!gotTheLock) {
         return;
       }
 
+      const notificationBody = [payload.workspaceName, payload.body]
+        .filter(Boolean)
+        .join("\n");
       const notification = new Notification({
         title: payload.title,
-        body: payload.body,
+        body: notificationBody,
       });
       const notificationSessionGeneration = authSessionGeneration;
       notification.on("click", () => {
