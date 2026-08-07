@@ -65,4 +65,42 @@ describe("parseNativeNotificationPayload", () => {
     };
     expect(parseNativeNotificationPayload(payload)).toEqual(payload);
   });
+
+  it("accepts a valid payload with workspaceName", () => {
+    const result = parseNativeNotificationPayload({
+      slug: "acme",
+      itemId: "item-1",
+      issueKey: "issue-1",
+      title: "New comment",
+      body: "",
+      workspaceName: "Acme Corp",
+    });
+    expect(result?.workspaceName).toBe("Acme Corp");
+  });
+
+  it("accepts a payload without workspaceName (backward compat)", () => {
+    const result = parseNativeNotificationPayload({
+      slug: "acme",
+      itemId: "item-1",
+      issueKey: "issue-1",
+      title: "New comment",
+      body: "",
+    });
+    expect(result).not.toBeNull();
+    expect(result?.workspaceName).toBeUndefined();
+  });
+
+  it("ignores workspaceName that is too long", () => {
+    const result = parseNativeNotificationPayload({
+      slug: "acme",
+      itemId: "item-1",
+      issueKey: "issue-1",
+      title: "New comment",
+      body: "",
+      workspaceName: "x".repeat(257),
+    });
+    // payload is valid, workspaceName is simply dropped
+    expect(result).not.toBeNull();
+    expect(result?.workspaceName).toBeUndefined();
+  });
 });

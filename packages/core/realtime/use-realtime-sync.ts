@@ -563,12 +563,19 @@ export async function handleInboxNew(
   // client can't see) still shows the banner — the user should learn about
   // the inbox item — but with an empty slug so the click is a no-op
   // (the inbox bridge ignores empty slugs) instead of routing wrong.
+  // Resolve workspace display name for the notification body from the
+  // already-warm workspace list cache — no network request needed.
+  const workspaceList = qc.getQueryData<Workspace[]>(workspaceKeys.list());
+  const workspaceName =
+    workspaceList?.find((w) => w.id === sourceWsId)?.name ?? undefined;
+
   const payload: SystemNotificationPayload = {
     slug: slug ?? "",
     itemId: item.id,
     issueKey: item.issue_id ?? item.id,
     title: item.title,
     body: item.body ?? "",
+    workspaceName,
   };
   const desktopAPI = (
     globalThis as unknown as {

@@ -27,6 +27,8 @@ export interface SystemNotificationPayload {
   issueKey: string;
   title: string;
   body: string;
+  /** Source workspace display name, shown in the notification body. */
+  workspaceName?: string;
 }
 
 type ClickHandler = (payload: SystemNotificationPayload) => void;
