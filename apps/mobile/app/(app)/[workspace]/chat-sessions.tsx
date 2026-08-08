@@ -53,9 +53,6 @@ export default function ChatSessionsRoute() {
 
   return (
     <View className="flex-1">
-      <View className="px-4 pt-4 pb-3">
-        <Text className="text-base font-semibold text-foreground">Chats</Text>
-      </View>
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {sessions.length === 0 ? (
           <View className="px-4 py-8">

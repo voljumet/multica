@@ -1,5 +1,9 @@
 /**
- * Agent run transcript — formSheet pushed from the Agent Runs list.
+ * Agent run transcript — regular pushed Stack screen on top of the
+ * Agent Runs list (title "Transcript" from the native iOS nav header).
+ * Deliberately NOT a formSheet: a live-scrolling log inside a formSheet
+ * fights the sheet's detent/gesture machinery on iOS 26 (scroll jumps
+ * back, content vanishes on tap/scroll).
  *
  * Shows the full execution log for one task (thinking / tools / agent
  * text / errors). While the task is active, `task:message` WS events
@@ -11,10 +15,10 @@
  * without blind-replacing rows the WS already delivered. Mirrors web's
  * LiveTranscriptDialog in packages/views/common/task-transcript/.
  *
- * Layout note: formSheet + headerShown:false requires the body to own a
- * solid, non-overlapping header. The ScrollView must only fill space
- * below it (explicit flex styles) — otherwise the log paints under
- * "Transcript" / agent name and steals taps (including Cancel / Retry).
+ * Layout note: the "Transcript" title lives in the native nav header —
+ * the body must NOT draw its own title. The agent info row below is
+ * content, not a title, and stays in the body so Cancel / Retry keep
+ * working.
  */
 import { useEffect, useMemo, useRef } from "react";
 import {
@@ -130,8 +134,15 @@ export default function IssueRunTranscriptRoute() {
 
   const scrollRef = useRef<ScrollView>(null);
   const prevCountRef = useRef(0);
+  // Only tail-follow while the user is near the bottom — otherwise every
+  // new live event yanks the log out from under them mid-read.
+  const nearBottomRef = useRef(true);
   useEffect(() => {
-    if (messages.length > prevCountRef.current && showAsLive) {
+    if (
+      messages.length > prevCountRef.current &&
+      showAsLive &&
+      nearBottomRef.current
+    ) {
       // Keep the live tail in view as new events stream in.
       requestAnimationFrame(() => {
         scrollRef.current?.scrollToEnd({ animated: true });
@@ -152,13 +163,9 @@ export default function IssueRunTranscriptRoute() {
 
   return (
     <View style={{ flex: 1 }} className="bg-background">
-      {/* Solid header — must not overlap the ScrollView. formSheet bodies
-       *  without an explicit column flex + solid bg let the log paint under
-       *  the title row and steal Cancel / Retry taps. */}
+      {/* Agent info row — content, not a title. The "Transcript" title
+       *  lives in the native nav header (see layout note above). */}
       <View className="px-4 pt-4 pb-3 gap-2 border-b border-border bg-background">
-        <Text className="text-base font-semibold text-foreground">
-          Transcript
-        </Text>
         {task ? (
           <View className="flex-row items-center gap-2">
             <ActorAvatar
@@ -198,6 +205,15 @@ export default function IssueRunTranscriptRoute() {
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScroll={(e) => {
+          const { contentOffset, contentSize, layoutMeasurement } =
+            e.nativeEvent;
+          const distanceFromBottom =
+            contentSize.height -
+            (contentOffset.y + layoutMeasurement.height);
+          nearBottomRef.current = distanceFromBottom < 80;
+        }}
+        scrollEventThrottle={100}
       >
         {isLoading && !isFetched ? (
           <View className="py-12 items-center">

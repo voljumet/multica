@@ -22,7 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         ? "Multica (Staging)"
         : "Multica (Dev)",
     slug: "multica-mobile",
-    version: "0.1.3",
+    version: "0.1.4",
     orientation: "portrait",
     userInterfaceStyle: "automatic",
     scheme: "multica",
@@ -33,7 +33,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       // Bumped by build.sh: +1 per upload of the same version, reset to 1 on
       // a version change. Keep on its own line — build.sh rewrites it via sed.
-      buildNumber: "1",
+      buildNumber: "3",
       supportsTablet: false,
       // Per-variant bundle id overrides exist for one reason: an Apple ID
       // can only sign bundle prefixes it owns, so contributors not on the

@@ -35,8 +35,7 @@ export default function IssuesProjectFilterRoute() {
 
   return (
     <View className="flex-1">
-      <View className="flex-row items-center justify-between px-4 pt-4 pb-3">
-        <Text className="text-base font-semibold text-foreground">Projects</Text>
+      <View className="flex-row items-center justify-end px-4 pt-4 pb-3">
         {hasActive ? (
           <Pressable
             onPress={onClear}
