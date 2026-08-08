@@ -43,8 +43,11 @@ import { useChatSessionPickerResetOnWorkspaceChange } from "@/data/stores/chat-s
  *   - `contentStyle.height: "100%"` — safety net against the same
  *     zero-size class of bugs above; ensures the sheet body fills the
  *     allotted detent.
- *   - `headerShown: false` — every sheet body draws its own header (title
- *     + optional right action). The native Stack header would double up.
+ *   - `headerShown: false` — base value only. EVERY sheet overrides this
+ *     with `headerShown: true` + a `title` (spread pattern at each
+ *     Stack.Screen below): a body-drawn title on formSheet paints under
+ *     the native grabber (react-native-screens #3634 overlap class), so
+ *     the iOS native nav header owns the title for every sheet.
  */
 const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>["options"] = {
   presentation: "formSheet",
@@ -205,19 +208,25 @@ export default function WorkspaceLayout() {
             net against the same zero-size class of bugs. */}
         <Stack.Screen
           name="issue/[id]/picker/status"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Status",
+          }}
         />
         <Stack.Screen
           name="issue/[id]/picker/priority"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Priority",
+          }}
         />
-        {/* Experiment: assignee uses iOS-native nav header + UISearchController
-            instead of the body-rendered header pattern in SHEET_OPTIONS.
-            Eliminates the #3634 overlap class of bugs and the focus-loss
-            footgun of a custom TextInput inside ListHeaderComponent. The
-            route file wires `headerSearchBarOptions` via setOptions. If this
-            proves out, propagate to label / project / other search pickers
-            and update CLAUDE.md Lesson 6 with a carve-out. */}
+        {/* Standard: every formSheet sheet uses the iOS-native nav header
+            (headerShown: true + title). Eliminates the #3634 overlap class
+            of bugs (body-drawn title painting under the native grabber).
+            Search-enabled pickers additionally wire
+            `headerSearchBarOptions` via useNativeSearchBar in the route. */}
         <Stack.Screen
           name="issue/[id]/picker/assignee"
           options={{
@@ -228,7 +237,11 @@ export default function WorkspaceLayout() {
         />
         <Stack.Screen
           name="issue/[id]/picker/label"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Label",
+          }}
         />
         <Stack.Screen
           name="mention-picker"
@@ -240,42 +253,77 @@ export default function WorkspaceLayout() {
         />
         <Stack.Screen
           name="issue/[id]/picker/project"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Project",
+          }}
         />
         <Stack.Screen
           name="issue/[id]/picker/due-date"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Due date",
+          }}
         />
-        <Stack.Screen name="issue/[id]/runs" options={SHEET_OPTIONS} />
-        {/* Per-task agent execution log. Stacked formSheet on top of the
-            runs list so swipe-dismiss returns to Agent Runs. */}
+        {/* Agent Runs + per-task transcript are regular pushed screens,
+            NOT formSheets: a scrollable log inside a formSheet fights the
+            sheet's detent/gesture machinery on iOS 26 (scroll jumps back,
+            content vanishes on tap/scroll), and a formSheet stacked on a
+            formSheet made it worse. Standard push + native header is
+            stable; swipe-back returns issue → runs → transcript. */}
+        <Stack.Screen
+          name="issue/[id]/runs"
+          options={{ title: "Agent Runs", headerBackTitle: "Back" }}
+        />
         <Stack.Screen
           name="issue/[id]/runs/[taskId]"
-          options={SHEET_OPTIONS}
+          options={{ title: "Transcript", headerBackTitle: "Agent Runs" }}
         />
         {/* Full emoji picker for a comment reaction. Pushed from the "+"
             button inside the comment long-press tapback row — see
             components/issue/comment-context-menu.tsx. */}
         <Stack.Screen
           name="issue/[id]/comment/[commentId]/emoji-picker"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Add Reaction",
+          }}
         />
         {/* Project-detail formSheet pickers. */}
         <Stack.Screen
           name="project/[id]/picker/status"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Status",
+          }}
         />
         <Stack.Screen
           name="project/[id]/picker/priority"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Priority",
+          }}
         />
         <Stack.Screen
           name="project/[id]/picker/lead"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Lead",
+          }}
         />
         <Stack.Screen
           name="project/[id]/add-resource"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Attach repository",
+          }}
         />
         {/* New-issue draft formSheet pickers — stacked on top of the
             new-issue.tsx Stack.Screen (which is itself a `modal`).
@@ -283,11 +331,19 @@ export default function WorkspaceLayout() {
             of a modal in the same Stack. */}
         <Stack.Screen
           name="new-issue-picker/status"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Status",
+          }}
         />
         <Stack.Screen
           name="new-issue-picker/priority"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Priority",
+          }}
         />
         <Stack.Screen
           name="new-issue-picker/assignee"
@@ -299,30 +355,67 @@ export default function WorkspaceLayout() {
         />
         <Stack.Screen
           name="new-issue-picker/project"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Project",
+          }}
         />
         <Stack.Screen
           name="new-issue-picker/due-date"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Due date",
+          }}
         />
         {/* New-project draft formSheet pickers — same pattern as
             new-issue-picker/*. Stacked on top of `project/new` (a modal). */}
         <Stack.Screen
           name="new-project-picker/status"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Status",
+          }}
         />
         <Stack.Screen
           name="new-project-picker/priority"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Priority",
+          }}
         />
         {/* Shared filter sheet for My Issues and the workspace Issues page —
             chooses the right view-store via `?scope=my|all` URL param. */}
-        <Stack.Screen name="issues-filter" options={SHEET_OPTIONS} />
+        <Stack.Screen
+          name="issues-filter"
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Filter",
+          }}
+        />
         {/* Chat session-switch sheet. */}
-        <Stack.Screen name="chat-sessions" options={SHEET_OPTIONS} />
+        <Stack.Screen
+          name="chat-sessions"
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Chats",
+          }}
+        />
         {/* Workspace switcher — reached from the More popover's collapsed
             WorkspaceCard. Two-step (pick → iOS Alert confirm → switch). */}
-        <Stack.Screen name="switch-workspace" options={SHEET_OPTIONS} />
+        <Stack.Screen
+          name="switch-workspace"
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Switch workspace",
+          }}
+        />
         <Stack.Screen
           name="more/agents"
           options={{ title: "Agents", headerBackTitle: "Back" }}

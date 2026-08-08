@@ -4,7 +4,7 @@
  * Diverges from the other single-select pickers because the native
  * UIDatePicker needs a confirmation step — the user spins to a date but
  * doesn't auto-commit on every onChange. Done / Clear buttons live in a
- * mini header row inside the route body (the parent Stack hides its own
+ * slim action row inside the route body (the title is the iOS-native nav
  * header per the formSheet config), and on submit we fire the mutation +
  * router.back().
  */
@@ -59,8 +59,7 @@ function DueDateHeader({
   onClear: () => void;
 }) {
   return (
-    <View className="flex-row items-center justify-between px-4 pt-4 pb-2">
-      <Text className="text-base font-semibold text-foreground">Due date</Text>
+    <View className="flex-row items-center justify-end px-4 pt-4 pb-2">
       <View className="flex-row items-center gap-1">
         {hasValue ? (
           <Pressable

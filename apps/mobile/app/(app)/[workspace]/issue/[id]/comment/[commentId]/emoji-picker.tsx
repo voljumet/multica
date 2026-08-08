@@ -21,7 +21,6 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { EmojiKeyboard, type EmojiType } from "rn-emoji-keyboard";
 import type { Reaction } from "@multica/core/types";
-import { Text } from "@/components/ui/text";
 import { issueTimelineOptions } from "@/data/queries/issues";
 import { useToggleCommentReaction } from "@/data/mutations/issues";
 import { useAuthStore } from "@/data/auth-store";
@@ -68,11 +67,6 @@ export default function CommentEmojiPickerRoute() {
 
   return (
     <View className="flex-1">
-      <View className="px-4 pt-3 pb-2">
-        <Text className="text-lg font-semibold text-foreground">
-          Add Reaction
-        </Text>
-      </View>
       <View className="flex-1">
         <EmojiKeyboard
           onEmojiSelected={onSelect}

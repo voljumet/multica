@@ -27,9 +27,6 @@ export function ProjectStatusPickerBody({ value, onChange }: Props) {
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
-      <View className="px-4 pt-3 pb-2">
-        <Text className="text-lg font-semibold text-foreground">Status</Text>
-      </View>
       <View className="px-2">
         {PROJECT_STATUSES.map((status) => {
           const selected = status === value;

@@ -1,8 +1,11 @@
 /**
- * Agent Runs sheet — presented as a formSheet by the parent Stack. Two
- * sections: Active (queued/dispatched/running, created_at desc) and Past
- * (completed_at desc, status rank as tiebreaker). Empty
- * sections hide entirely.
+ * Agent Runs screen — regular pushed Stack screen (title "Agent Runs"
+ * from the native iOS nav header). Deliberately NOT a formSheet: a
+ * scrollable list inside a formSheet fights the sheet's detent/gesture
+ * machinery on iOS 26 (scroll jumps back, content vanishes). Two
+ * sections: Active (queued/dispatched/running, created_at desc) and
+ * Past (completed_at desc, status rank as tiebreaker). Empty sections
+ * hide entirely.
  *
  * Both entry points (the in-card AgentActivityRow and the Stack-header
  * AgentHeaderBadge) push this route. Tapping a row opens the per-task
@@ -65,11 +68,6 @@ export default function IssueRunsRoute() {
 
   return (
     <View style={{ flex: 1 }} className="bg-background">
-      <View className="px-4 pt-4 pb-3 border-b border-border bg-background">
-        <Text className="text-base font-semibold text-foreground">
-          Agent Runs
-        </Text>
-      </View>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16, paddingTop: 12 }}

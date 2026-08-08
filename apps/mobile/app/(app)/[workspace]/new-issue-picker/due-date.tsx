@@ -3,7 +3,7 @@
  *
  * Same Done / Clear pattern as the issue-detail variant
  * (`issue/[id]/picker/due-date.tsx`) — UIDatePicker doesn't auto-commit, so
- * the route renders a tiny header with action buttons.
+ * the route renders a slim action row below the native nav header.
  */
 import { useRef } from "react";
 import { Pressable, View } from "react-native";
@@ -22,10 +22,7 @@ export default function NewIssueDueDatePickerRoute() {
 
   return (
     <View className="flex-1">
-      <View className="flex-row items-center justify-between px-4 pt-4 pb-2">
-        <Text className="text-base font-semibold text-foreground">
-          Due date
-        </Text>
+      <View className="flex-row items-center justify-end px-4 pt-4 pb-2">
         <View className="flex-row items-center gap-1">
           {dueDate ? (
             <Pressable

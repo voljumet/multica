@@ -92,8 +92,14 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Default tap: navigate to the issue.
+        // Default tap: navigate to the issue. Reset the stack first —
+        // a bare router.push keeps stacking issue screens on top of
+        // whatever is open (previous notification taps, sheets, modals),
+        // so repeated notifications bury the user under a deep pile.
+        // dismissAll pops to the tab anchor, then push adds exactly one
+        // issue screen on top.
         if (data?.workspace_slug && data?.issue_id) {
+          if (router.canDismiss()) router.dismissAll();
           router.push(
             `/${data.workspace_slug}/issue/${data.issue_id}` as Parameters<
               typeof router.push
