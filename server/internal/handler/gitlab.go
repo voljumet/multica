@@ -797,6 +797,26 @@ func gitlabIssueLabels(p gitlabIssuePayload) []gitlabIssueLabel {
 	return p.ObjectAttributes.Labels
 }
 
+// isGitLabIssueClosed reports whether this hook closes a GitLab issue.
+// Prefer action=close; also accept a state transition opened→closed on update
+// (some GitLab versions fire action=update with state=closed when an MR closes an issue).
+func isGitLabIssueClosed(action, state string, stateChange *gitlabIssueStateChange) bool {
+	if action == "close" {
+		return true
+	}
+	if stateChange == nil {
+		return false
+	}
+	prev := strings.ToLower(strings.TrimSpace(stateChange.Previous))
+	curr := strings.ToLower(strings.TrimSpace(stateChange.Current))
+	if curr == "" {
+		curr = strings.ToLower(strings.TrimSpace(state))
+	}
+	prevOpen := prev == "opened" || prev == "open"
+	currClosed := curr == "closed" || curr == "close"
+	return prevOpen && currClosed
+}
+
 // isGitLabIssueReopened reports whether this hook reopens a closed GitLab issue.
 // Prefer action=reopen; also accept a state transition closed→opened on update
 // (some GitLab versions surface reopen that way).
@@ -1010,6 +1030,7 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 	}
 	hasSyncLabel := hasGitLabIssueSyncTrigger(labels, syncLabel)
 	syncLabelRemoved := gitlabSyncLabelRemoved(p.Changes.Labels, syncLabel)
+	closed := isGitLabIssueClosed(action, state, p.Changes.State)
 	reopened := isGitLabIssueReopened(action, state, p.Changes.State)
 
 	assigneeUsername := ""
@@ -1034,6 +1055,7 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 		"sync_label", syncLabel,
 		"has_sync_label", hasSyncLabel,
 		"sync_label_removed", syncLabelRemoved,
+		"closed", closed,
 		"reopened", reopened,
 		"already_linked", rowExists,
 		"title", p.ObjectAttributes.Title,
@@ -1183,7 +1205,7 @@ func (h *Handler) handleGitLabIssueEvent(ctx context.Context, conn db.GitlabConn
 			return
 		}
 		switch {
-		case action == "close":
+		case closed:
 			h.advanceIssueToDone(ctx, issue, workspaceID, "gitlab_issue_closed")
 		case reopened:
 			h.setGitLabLinkedIssueStatus(ctx, issue, workspaceID, "in_progress", "gitlab_issue_reopened")

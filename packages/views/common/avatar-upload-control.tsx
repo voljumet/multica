@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, lazy, useRef, useState } from "react";
-import { Bot, Camera, ImagePlus, Loader2, Users, X } from "lucide-react";
+import { Bot, Camera, ImagePlus, Loader2, Sparkles, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@multica/core/api";
 import { useFileUpload } from "@multica/core/hooks/use-file-upload";
@@ -20,6 +20,7 @@ import { Separator } from "@multica/ui/components/ui/separator";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../i18n";
 import { AvatarCropDialog } from "./avatar-crop-dialog";
+import { DicebearAvatarPicker } from "./dicebear-avatar-picker";
 
 // The full emoji-mart picker is ~1MB of emoji data. Only the handful of
 // suggestions render eagerly; the searchable set loads when asked for.
@@ -364,6 +365,22 @@ export function AvatarUploadControl({
         >
           <X className="h-3 w-3" />
         </button>
+      )}
+
+      {!disabled && !busy && (
+        <DicebearAvatarPicker
+          onSelect={(url) => onUploaded(url)}
+          trigger={
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute -bottom-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Generate avatar"
+            >
+              <Sparkles className="h-3 w-3" />
+            </button>
+          }
+        />
       )}
 
       <input
