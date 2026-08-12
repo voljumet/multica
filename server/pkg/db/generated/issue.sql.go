@@ -873,6 +873,48 @@ func (q *Queries) ListChildrenByParents(ctx context.Context, arg ListChildrenByP
 	return items, nil
 }
 
+const listExpiredClosedIssues = `-- name: ListExpiredClosedIssues :many
+SELECT id, workspace_id FROM issue
+WHERE status IN ('done', 'cancelled')
+  AND updated_at < now() - ($1 * INTERVAL '1 second')
+ORDER BY updated_at ASC
+LIMIT $2
+`
+
+type ListExpiredClosedIssuesParams struct {
+	TtlSecs interface{} `json:"ttl_secs"`
+	MaxRows int32       `json:"max_rows"`
+}
+
+type ListExpiredClosedIssuesRow struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// Returns up to max_rows issues that have been in done/cancelled status for
+// longer than ttl_secs seconds. Used by the retention sweeper; ordered oldest
+// first so the sweeper drains the historical backlog before newer entries.
+// The partial index idx_issue_closed_updated_at covers this predicate.
+func (q *Queries) ListExpiredClosedIssues(ctx context.Context, arg ListExpiredClosedIssuesParams) ([]ListExpiredClosedIssuesRow, error) {
+	rows, err := q.db.Query(ctx, listExpiredClosedIssues, arg.TtlSecs, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListExpiredClosedIssuesRow{}
+	for rows.Next() {
+		var i ListExpiredClosedIssuesRow
+		if err := rows.Scan(&i.ID, &i.WorkspaceID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIssueGCStatuses = `-- name: ListIssueGCStatuses :many
 SELECT id, status, updated_at
 FROM issue

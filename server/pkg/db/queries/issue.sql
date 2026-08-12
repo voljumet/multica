@@ -193,6 +193,17 @@ cleared_vcs_pr_links AS (
 )
 DELETE FROM issue WHERE issue.id IN (SELECT target.id FROM target);
 
+-- name: ListExpiredClosedIssues :many
+-- Returns up to max_rows issues that have been in done/cancelled status for
+-- longer than ttl_secs seconds. Used by the retention sweeper; ordered oldest
+-- first so the sweeper drains the historical backlog before newer entries.
+-- The partial index idx_issue_closed_updated_at covers this predicate.
+SELECT id, workspace_id FROM issue
+WHERE status IN ('done', 'cancelled')
+  AND updated_at < now() - (sqlc.arg(ttl_secs) * INTERVAL '1 second')
+ORDER BY updated_at ASC
+LIMIT sqlc.arg(max_rows);
+
 -- name: ListOpenIssues :many
 -- See ListIssues for the semantics of involves_user_id (mirrors the 4-branch
 -- filter; member-direct assignment is intentionally excluded).

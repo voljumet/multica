@@ -6,9 +6,9 @@
  * fetch every issue in the workspace, expose `all / members / agents`
  * scope tabs, group by status, allow status + priority filtering.
  */
-import { useMemo } from "react";
-import { Pressable, SectionList, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, SectionList, View } from "react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import type { Issue, IssuePriority, IssueStatus } from "@multica/core/types";
@@ -19,7 +19,9 @@ import { HeaderActions } from "@/components/ui/app-header-actions";
 import { StatusIcon } from "@/components/ui/status-icon";
 import { IssueRow } from "@/components/issue/issue-row";
 import { IssuesLoading } from "@/components/issue/issues-loading";
-import { issueListOptions } from "@/data/queries/issues";
+import { issueListOptions, issueKeys } from "@/data/queries/issues";
+import { api } from "@/data/api";
+import { projectListOptions } from "@/data/queries/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import {
   useIssuesViewStore,
@@ -43,9 +45,12 @@ const SCOPES: { value: IssuesScope; label: string }[] = [
   { value: "agents", label: "Agents" },
 ];
 
+const PAGE_SIZE = 100;
+
 export default function IssuesTab() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
+  const qc = useQueryClient();
 
   const scope = useIssuesViewStore((s) => s.scope);
   const setScope = useIssuesViewStore((s) => s.setScope);
@@ -71,6 +76,36 @@ export default function IssuesTab() {
   const { data, isLoading, error, refetch, isRefetching } = useQuery(
     issueListOptions(wsId),
   );
+
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  // true until a page comes back with fewer than PAGE_SIZE rows
+  const hasMore = useRef(true);
+
+  // Reset hasMore when the workspace changes or data is refreshed from scratch
+  useEffect(() => {
+    hasMore.current = true;
+  }, [wsId]);
+
+  const fetchMore = useCallback(async () => {
+    if (!wsId || !hasMore.current || isFetchingMore) return;
+    const current = qc.getQueryData<import("@multica/core/types").Issue[]>(
+      issueKeys.list(wsId),
+    );
+    const offset = current?.length ?? 0;
+    setIsFetchingMore(true);
+    try {
+      const res = await api.listIssues({ offset });
+      if (res.issues.length < PAGE_SIZE) hasMore.current = false;
+      if (res.issues.length > 0) {
+        qc.setQueryData<import("@multica/core/types").Issue[]>(
+          issueKeys.list(wsId),
+          (old) => (old ? [...old, ...res.issues] : res.issues),
+        );
+      }
+    } finally {
+      setIsFetchingMore(false);
+    }
+  }, [wsId, isFetchingMore, qc]);
 
   const allIssues = data ?? [];
 
@@ -194,7 +229,19 @@ export default function IssuesTab() {
             />
           )}
           refreshing={isRefetching}
-          onRefresh={refetch}
+          onRefresh={() => {
+            hasMore.current = true;
+            refetch();
+          }}
+          onEndReached={fetchMore}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            isFetchingMore ? (
+              <View className="py-4 items-center">
+                <ActivityIndicator />
+              </View>
+            ) : null
+          }
         />
       )}
     </View>

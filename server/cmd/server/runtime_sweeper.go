@@ -11,6 +11,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/handler"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/service"
+	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -67,6 +68,15 @@ const (
 	chatFinalizeBatchSize = 100
 )
 
+// issueRetentionSeconds deletes done/cancelled issues older than this. Default
+// is 14 days. Override with ISSUE_RETENTION (Go duration, e.g. "7d" is
+// unsupported — use "168h"). Zero or negative disables the sweep.
+var issueRetentionSeconds = envDurationPositive("ISSUE_RETENTION", 14*24*time.Hour).Seconds()
+
+// issueRetentionBatchSize caps how many issues a single sweeper tick deletes.
+// Keeps each tick short even when a large backlog exists on first enable.
+const issueRetentionBatchSize = 50
+
 // queuedTTLSeconds expires tasks that have been sitting in 'queued'
 // for longer than this without ever being claimed. This is the cleanup
 // arm of the MUL-1899 backlog fix: even with the dispatch-time
@@ -91,9 +101,11 @@ var queuedTTLSeconds = envDurationPositive("TASK_QUEUED_TTL", 2*time.Hour).Secon
 // hot heartbeat path; the DB is allowed to lag up to runtimeHeartbeatDBFlushInterval).
 // When liveness is unavailable or errors, we fall back to trusting the DB
 // stale window — that is the original behavior.
-func runRuntimeSweeper(ctx context.Context, queries *db.Queries, liveness handler.LivenessStore, taskSvc *service.TaskService, bus *events.Bus) {
+func runRuntimeSweeper(ctx context.Context, queries *db.Queries, liveness handler.LivenessStore, taskSvc *service.TaskService, bus *events.Bus, store storage.Storage) {
 	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
+	dailyTicker := time.NewTicker(24 * time.Hour)
+	defer dailyTicker.Stop()
 
 	for {
 		select {
@@ -105,6 +117,8 @@ func runRuntimeSweeper(ctx context.Context, queries *db.Queries, liveness handle
 			sweepExpiredQueuedTasks(ctx, queries, taskSvc)
 			sweepDeferredChatFinalizations(ctx, queries, taskSvc)
 			gcRuntimes(ctx, queries, bus)
+		case <-dailyTicker.C:
+			sweepExpiredClosedIssues(ctx, queries, taskSvc, bus, store)
 		}
 	}
 }
@@ -386,6 +400,68 @@ func broadcastFailedTasks(ctx context.Context, queries *db.Queries, taskSvc *ser
 	for _, agentID := range affectedAgents {
 		reconcileAgentStatus(ctx, queries, bus, agentID)
 	}
+}
+
+// sweepExpiredClosedIssues deletes done/cancelled issues whose updated_at is
+// older than issueRetentionSeconds. Mirrors the handler-layer DeleteIssue
+// cleanup sequence: cancel active tasks, fail linked autopilot runs, collect
+// attachment URLs, delete the row (CASCADE handles child tables), then clean
+// S3. Capped at issueRetentionBatchSize per tick so a historical backlog on
+// first enable doesn't monopolise DB CPU.
+//
+// Closed issues rarely have active tasks or attachments, so the per-issue
+// loops are expected to be no-ops in the steady state.
+func sweepExpiredClosedIssues(ctx context.Context, queries *db.Queries, taskSvc *service.TaskService, bus *events.Bus, store storage.Storage) {
+	if issueRetentionSeconds <= 0 {
+		return
+	}
+	expired, err := queries.ListExpiredClosedIssues(ctx, db.ListExpiredClosedIssuesParams{
+		TtlSecs: issueRetentionSeconds,
+		MaxRows: issueRetentionBatchSize,
+	})
+	if err != nil {
+		slog.Warn("issue retention sweeper: failed to list expired issues", "error", err)
+		return
+	}
+	if len(expired) == 0 {
+		return
+	}
+
+	var attachmentURLs []string
+	for _, row := range expired {
+		taskSvc.CancelTasksForIssue(ctx, row.ID)
+		queries.FailAutopilotRunsByIssue(ctx, row.ID)
+		urls, _ := queries.ListAttachmentURLsByIssueOrComments(ctx, row.ID)
+		attachmentURLs = append(attachmentURLs, urls...)
+	}
+
+	deleted := 0
+	for _, row := range expired {
+		if err := queries.DeleteIssue(ctx, db.DeleteIssueParams{
+			ID:          row.ID,
+			WorkspaceID: row.WorkspaceID,
+		}); err != nil {
+			slog.Warn("issue retention sweeper: failed to delete issue", "issue_id", util.UUIDToString(row.ID), "error", err)
+			continue
+		}
+		deleted++
+		bus.Publish(events.Event{
+			Type:        protocol.EventIssueDeleted,
+			WorkspaceID: util.UUIDToString(row.WorkspaceID),
+			ActorType:   "system",
+			Payload:     map[string]any{"issue_id": util.UUIDToString(row.ID)},
+		})
+	}
+
+	if store != nil && len(attachmentURLs) > 0 {
+		keys := make([]string, len(attachmentURLs))
+		for i, u := range attachmentURLs {
+			keys[i] = store.KeyFromURL(u)
+		}
+		store.DeleteKeys(ctx, keys)
+	}
+
+	slog.Info("issue retention sweeper: deleted expired closed issues", "deleted", deleted, "batch", len(expired))
 }
 
 // reconcileAgentStatus refreshes agent status from the current active task set.
