@@ -1395,6 +1395,66 @@ func TestHandleGitLabIssueEvent_ReopenViaStateChange(t *testing.T) {
 	}
 }
 
+// TestHandleGitLabIssueEvent_CloseViaStateChange tests that action=update with
+// changes.state opened→closed (fired by GitLab when an MR closes an issue via
+// "Closes #N") also marks the Multica issue Done.
+func TestHandleGitLabIssueEvent_CloseViaStateChange(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("no database available")
+	}
+	ctx := context.Background()
+
+	wsUUID := parseUUID(testWorkspaceID)
+	userUUID := parseUUID(testUserID)
+	conn, err := testHandler.Queries.CreateGitLabConnection(ctx, db.CreateGitLabConnectionParams{
+		WorkspaceID:   wsUUID,
+		Namespace:     "testorg-issue-close-state",
+		NamespaceType: "group",
+		AccessToken:   "dummy",
+		WebhookSecret: "s",
+		ConnectedByID: userUUID,
+	})
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() {
+		testHandler.Queries.DeleteGitLabConnection(ctx, db.DeleteGitLabConnectionParams{
+			ID: conn.ID, WorkspaceID: wsUUID,
+		})
+	})
+
+	openPayload := `{"object_kind":"issue","object_attributes":{"iid":16,"title":"Close via state","description":"","action":"open","state":"opened"},"project":{"id":105,"path_with_namespace":"testorg-issue-close-state/repo","namespace":"testorg-issue-close-state"},"labels":[{"title":"agent"}],"assignees":[]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(openPayload))
+	req.Header.Set("X-Gitlab-Token", "s")
+	req.Header.Set("X-Gitlab-Event", "Issue Hook")
+	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+
+	row, _ := testHandler.Queries.GetGitLabIssueByProjectAndIID(ctx, db.GetGitLabIssueByProjectAndIIDParams{
+		WorkspaceID: wsUUID, ProjectPath: "testorg-issue-close-state/repo", GlIssueIid: 16,
+	})
+
+	closePayload := `{
+		"object_kind": "issue",
+		"object_attributes": {"iid": 16, "title": "Close via state", "description": "", "action": "update", "state": "closed"},
+		"project": {"id": 105, "path_with_namespace": "testorg-issue-close-state/repo", "namespace": "testorg-issue-close-state"},
+		"labels": [{"title": "agent"}],
+		"assignees": [],
+		"changes": {"state": {"previous": "opened", "current": "closed"}}
+	}`
+	req = httptest.NewRequest(http.MethodPost, "/api/webhooks/gitlab", strings.NewReader(closePayload))
+	req.Header.Set("X-Gitlab-Token", "s")
+	req.Header.Set("X-Gitlab-Event", "Issue Hook")
+	testHandler.HandleGitLabWebhook(httptest.NewRecorder(), req)
+
+	issue, err := testHandler.Queries.GetIssue(ctx, row.IssueID)
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if issue.Status != "done" {
+		t.Errorf("status: got %q, want done", issue.Status)
+	}
+}
+
 // TestHandleGitLabNoteEvent_CreatesComment tests that a Note Hook creates a
 // Multica comment authored by a persona agent matching the GitLab user.
 func TestHandleGitLabNoteEvent_CreatesComment(t *testing.T) {
