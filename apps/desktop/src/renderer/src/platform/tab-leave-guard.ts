@@ -6,59 +6,50 @@ import {
   resourceKeyForUrl,
 } from "@/stores/tab-store";
 
-/**
- * Leave-tab confirmation for the desktop single-router architecture.
- *
- * Only the active tab is mounted. Switching workspace/tabs or closing the
- * active tab remounts the page tree and drops local React state that is not
- * in a draft store / server save path. This guard asks before that unmount
- * so users are not surprised mid-edit.
- *
- * "Don't ask again this session" is process-local (not persisted) so a new
- * launch re-enables the warning.
- */
+// ponytail: all draft stores (issue/project/feedback/comment/chat) use zustand
+// persist — data survives tab remounts. Nothing is actually lost on switch/close,
+// so this guard never needs to block. Re-add checks here only for genuinely
+// ephemeral state that can't survive a remount.
+export function hasUnsavedContent(): boolean {
+  return false;
+}
 
 type LeaveAction = () => void;
 
 interface TabLeaveGuardState {
   pending: LeaveAction | null;
-  skipForSession: boolean;
   /**
-   * Queue `action` behind a confirmation dialog, or run it immediately when
-   * the user opted out for this session.
+   * Queue `action` behind a confirmation dialog when there is unsaved
+   * content, or run it immediately when leaving loses nothing.
    */
   requestLeave: (action: LeaveAction) => void;
-  /** Run the pending leave action. Optionally suppress further prompts. */
-  confirm: (dontAskAgain?: boolean) => void;
+  /** Run the pending leave action. */
+  confirm: () => void;
   cancel: () => void;
-  /** Test helper — clear session skip + pending. */
+  /** Test helper — clear pending. */
   reset: () => void;
 }
 
 export const useTabLeaveGuardStore = create<TabLeaveGuardState>((set, get) => ({
   pending: null,
-  skipForSession: false,
   requestLeave(action) {
-    if (get().skipForSession) {
+    if (!hasUnsavedContent()) {
       action();
       return;
     }
     // Replace any prior pending leave — only one dialog at a time.
     set({ pending: action });
   },
-  confirm(dontAskAgain = false) {
+  confirm() {
     const { pending } = get();
-    set({
-      pending: null,
-      skipForSession: dontAskAgain ? true : get().skipForSession,
-    });
+    set({ pending: null });
     pending?.();
   },
   cancel() {
     set({ pending: null });
   },
   reset() {
-    set({ pending: null, skipForSession: false });
+    set({ pending: null });
   },
 }));
 
