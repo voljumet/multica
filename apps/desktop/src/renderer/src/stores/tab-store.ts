@@ -3,7 +3,9 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { arrayMove } from "@dnd-kit/sortable";
 import { createPersistStorage, defaultStorage } from "@multica/core/platform";
 import { createSafeId } from "@multica/core/utils";
-import { isReservedSlug } from "@multica/core/paths";
+import { isReservedSlug, resolveRouteIconName } from "@multica/core/paths";
+
+export { resolveRouteIconName as resolveRouteIcon };
 
 // ---------------------------------------------------------------------------
 // Types

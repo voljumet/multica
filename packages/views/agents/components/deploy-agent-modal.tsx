@@ -80,7 +80,7 @@ export function DeployAgentModal({
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-1.5">
             <Label>Target workspace</Label>
-            <Select value={targetSlug} onValueChange={(v) => setTargetSlug(v ?? "")}>
+            <Select value={targetSlug} onValueChange={(v) => setTargetSlug(v ?? "")} items={otherWorkspaces.map((w) => ({ label: w.name, value: w.slug }))}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a workspace…" />
               </SelectTrigger>

@@ -15,7 +15,7 @@ describe("tab-leave-guard", () => {
     useTabStore.getState().reset();
     useTabStore.getState().switchWorkspace("acme");
     // Second tab so close/switch can leave the first.
-    useTabStore.getState().addTab("/acme/projects", "Projects", "ListTodo");
+    useTabStore.getState().addTab("/acme/projects", "Projects");
   });
 
   it("wouldLeaveActiveTab is true only for a different tab", () => {
@@ -59,21 +59,6 @@ describe("tab-leave-guard", () => {
 
     expect(useTabStore.getState().byWorkspace.acme.activeTabId).toBe(activeId);
     expect(useTabLeaveGuardStore.getState().pending).toBeNull();
-  });
-
-  it("skipForSession runs subsequent leaves without prompting", () => {
-    const group = useTabStore.getState().byWorkspace.acme;
-    const activeId = group.activeTabId;
-    const otherId = group.tabs.find((t) => t.id !== activeId)!.id;
-
-    requestSetActiveTab(otherId);
-    useTabLeaveGuardStore.getState().confirm(true);
-    expect(useTabLeaveGuardStore.getState().skipForSession).toBe(true);
-
-    // Switch back — no pending dialog.
-    requestSetActiveTab(activeId);
-    expect(useTabLeaveGuardStore.getState().pending).toBeNull();
-    expect(useTabStore.getState().byWorkspace.acme.activeTabId).toBe(activeId);
   });
 
   it("requestCloseTab closes inactive tabs without confirmation", () => {

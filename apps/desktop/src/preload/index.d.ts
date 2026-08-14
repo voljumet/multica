@@ -107,6 +107,9 @@ interface DesktopAPI {
   /** Listen for Cmd/Ctrl+W tab-close requests from the main process.
    *  Returns an unsubscribe function. */
   onCloseActiveTab: (callback: () => void) => () => void;
+  /** Listen for "open Settings" requests from the main process (e.g. tray menu).
+   *  Returns an unsubscribe function. */
+  onOpenSettings: (callback: () => void) => () => void;
   /** Ask the main process to close the window. */
   closeWindow: () => void;
   /** Open an issue-detail tab in a dedicated native window. */

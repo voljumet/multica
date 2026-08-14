@@ -7,7 +7,6 @@ import { useAuthStore } from "@multica/core/auth";
 import { isReservedSlug } from "@multica/core/paths";
 import {
   useTabStore,
-  resolveRouteIcon,
   getActiveTab,
   splitTabUrl,
   useActiveTabUrl,
@@ -82,6 +81,22 @@ function tryRouteToOverlay(path: string): boolean {
 }
 
 /**
+ * Open a link from rendered content (markdown, rich-text, etc.) in a tab.
+ * Switches workspace if the path belongs to a different one; otherwise opens
+ * or activates a tab for the path within the current workspace.
+ */
+export function routeContentLinkPath(path: string): void {
+  const store = useTabStore.getState();
+  const slug = extractWorkspaceSlug(path);
+  if (slug && slug !== store.activeWorkspaceSlug) {
+    store.switchWorkspace(slug, path);
+    return;
+  }
+  const tabId = store.openTab(path, "");
+  store.setActiveTab(tabId);
+}
+
+/**
  * Intercept pushes that change workspace. Returns `true` if the navigation
  * was delegated to the tab store (caller should NOT proceed).
  *
@@ -122,8 +137,7 @@ function tryRouteToPinnedNewTab(path: string): boolean {
   const newPathname = splitTabUrl(path).pathname;
   if (currentPathname === newPathname) return false;
 
-  const icon = resolveRouteIcon(path);
-  requestOpenTab(path, path, icon, { activate: true });
+  requestOpenTab(path, path, { activate: true });
   return true;
 }
 
@@ -195,8 +209,7 @@ export function DesktopNavigationProvider({
           requestSwitchWorkspace(slug, path);
           return;
         }
-        const icon = resolveRouteIcon(path);
-        requestOpenTab(path, title ?? path, icon, { activate: opts?.activate });
+        requestOpenTab(path, title ?? path, { activate: opts?.activate });
       },
       getShareableUrl: (path: string) => `${appUrl}${path}`,
     }),

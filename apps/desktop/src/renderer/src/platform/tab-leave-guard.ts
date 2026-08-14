@@ -156,16 +156,15 @@ export function requestSwitchWorkspace(slug: string, openPath?: string): void {
 export function requestOpenTab(
   path: string,
   title: string,
-  icon: string,
   opts?: { activate?: boolean },
 ): string {
   const store = useTabStore.getState();
   if (!wouldOpenTabLeaveActive(path, opts?.activate)) {
-    return store.openTab(path, title, icon, opts);
+    return store.openTab(path, title, opts);
   }
 
   useTabLeaveGuardStore.getState().requestLeave(() => {
-    useTabStore.getState().openTab(path, title, icon, opts);
+    useTabStore.getState().openTab(path, title, opts);
   });
   return "";
 }

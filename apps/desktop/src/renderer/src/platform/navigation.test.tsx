@@ -38,9 +38,6 @@ beforeEach(() => {
   overlay.overlay = null;
   auth.logout.mockReset();
   useTabLeaveGuardStore.getState().reset();
-  // Navigation unit tests assert store mutations; skip the leave dialog so
-  // activate / switchWorkspace paths run synchronously.
-  useTabLeaveGuardStore.setState({ skipForSession: true });
   useTabStore.getState().reset();
   useTabStore.getState().switchWorkspace("acme"); // default tab /acme/issues
   Object.defineProperty(window, "desktopAPI", {

@@ -362,7 +362,8 @@
     "link_copy_failed": "复制链接失败",
     "workdir_path_copied": "已复制本地 workdir 路径",
     "workdir_path_copy_failed": "复制本地 workdir 路径失败",
-    "workdir_path_unavailable": "暂无本地 workdir — 这个任务还没被本地 agent 运行过"
+    "workdir_path_unavailable": "暂无本地 workdir — 这个任务还没被本地 agent 运行过",
+    "section_token_usage": "令牌使用量"
   },
   "timeline": {
     "loading": "加载中…"

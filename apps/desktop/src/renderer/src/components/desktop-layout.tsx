@@ -5,7 +5,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
 import { useTabHistory } from "@/hooks/use-tab-history";
 import { useActiveTitleSync } from "@/hooks/use-tab-sync";
-import { resolveRouteIcon } from "@/stores/tab-store";
 import {
   SidebarProvider,
   SidebarTrigger,
@@ -158,10 +157,9 @@ function useInternalLinkHandler() {
     const handler = (e: Event) => {
       const path = (e as CustomEvent).detail?.path;
       if (!path) return;
-      const icon = resolveRouteIcon(path);
       // Activate into the target tab (or create + activate). Leave guard
       // confirms when that would unmount the current host.
-      requestOpenTab(path, path, icon, { activate: true });
+      requestOpenTab(path, path, { activate: true });
     };
     window.addEventListener("multica:navigate", handler);
     return () => window.removeEventListener("multica:navigate", handler);

@@ -213,7 +213,7 @@ function SortableTabItem({
   // pinned" indicator (RFC §3 D1v-iv FINAL). The route information is still
   // present in the title, and this avoids a hard left accent border that read
   // as visually heavy in light mode.
-  const LeadingIcon = tab.pinned ? Pin : TAB_ICONS[tab.icon];
+  const LeadingIcon = tab.pinned ? Pin : TAB_ICONS[resolveRouteIcon(tab.url)];
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -501,11 +501,10 @@ function NewTabButton() {
     const activeSlug = useTabStore.getState().activeWorkspaceSlug;
     if (!activeSlug) return;
     const path = paths.workspace(activeSlug).issues();
-    const icon = resolveRouteIcon(path);
     useTabLeaveGuardStore.getState().requestLeave(() => {
       const tabId = useTabStore
         .getState()
-        .addTab(path, "Issues", icon);
+        .addTab(path, "Issues");
       if (tabId) useTabStore.getState().setActiveTab(tabId);
     });
   };
