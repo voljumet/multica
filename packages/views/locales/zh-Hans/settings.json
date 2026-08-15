@@ -131,7 +131,9 @@
       "goUsage": { "label": "前往用量", "description": "打开用量分析。" },
       "goRuntimes": { "label": "前往运行时", "description": "打开运行时配置。" },
       "goSkills": { "label": "前往 Skills", "description": "打开 skill 库。" },
-      "goSettings": { "label": "前往设置", "description": "打开工作区设置。" }
+      "goSettings": { "label": "前往设置", "description": "打开工作区设置。" },
+      "navBack": { "label": "后退", "description": "返回上一页。" },
+      "navForward": { "label": "前进", "description": "前往下一页。" }
     },
     "fixed": {
       "title": "固定的系统快捷键",

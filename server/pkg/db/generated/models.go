@@ -50,9 +50,9 @@ type Agent struct {
 	PermissionMode        string             `json:"permission_mode"`
 	Kind                  string             `json:"kind"`
 	SystemKey             pgtype.Text        `json:"system_key"`
+	PausedAt              pgtype.Timestamptz `json:"paused_at"`
 	DisabledRuntimeSkills []byte             `json:"disabled_runtime_skills"`
 	ServiceTier           pgtype.Text        `json:"service_tier"`
-	PausedAt              pgtype.Timestamptz `json:"paused_at"`
 }
 
 type AgentBuilderDraft struct {
@@ -458,8 +458,8 @@ type Comment struct {
 	ResolvedByType pgtype.Text        `json:"resolved_by_type"`
 	ResolvedByID   pgtype.UUID        `json:"resolved_by_id"`
 	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
-	QuickActionID  pgtype.UUID        `json:"quick_action_id"`
 	GitlabNoteID   pgtype.Int8        `json:"gitlab_note_id"`
+	QuickActionID  pgtype.UUID        `json:"quick_action_id"`
 }
 
 type CommentReaction struct {

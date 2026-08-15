@@ -36,6 +36,7 @@ const GLOBAL_ACTIONS: readonly ShortcutActionId[] = [
   "goRuntimes",
   "goSkills",
   "goSettings",
+  "navBack",
 ];
 
 export function shouldIgnoreGlobalShortcutEvent(event: KeyboardEvent): boolean {
@@ -116,6 +117,11 @@ export function GlobalShortcuts() {
           ? { project_id: projectMatch[1] }
           : undefined;
         openCreateIssueWithPreference(data);
+        return;
+      }
+
+      if (actionId === "navBack") {
+        navigation.back();
         return;
       }
 

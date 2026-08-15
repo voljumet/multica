@@ -269,7 +269,7 @@ func (h *Handler) mirrorVCSPullRequest(ctx context.Context, conn db.VcsConnectio
 				continue
 			}
 			if counts.OpenCount == 0 && counts.MergedWithCloseIntentCount > 0 {
-				h.advanceIssueToDone(ctx, issue, workspaceID)
+				h.advanceIssueToDone(ctx, issue, workspaceID, "vcs_pr_merged")
 			}
 		}
 	}

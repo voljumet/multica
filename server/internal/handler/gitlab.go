@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -493,7 +494,7 @@ func (h *Handler) handleGitLabNoteEvent(ctx context.Context, conn db.GitlabConne
 		authorID = agent.ID
 		if created {
 			h.publish(protocol.EventAgentCreated, uuidToString(conn.WorkspaceID), "system", "", map[string]any{
-				"agent": broadcastAgentResponse(agentToResponse(agent)),
+				"agent": broadcastAgentResponse(h.agentToResponse(agent)),
 			})
 		}
 	} else {
@@ -753,6 +754,72 @@ func AppendGitLabNoteRelaySentinel(body string) string {
 		return body
 	}
 	return body + "\n\n" + gitlabNoteRelaySentinel
+}
+
+// postCommentToGitLab relays a newly-created Multica comment to the linked
+// GitLab issue as a note. Best-effort: errors are logged but not surfaced.
+// Appends the relay sentinel so the Note Hook does not re-import it.
+// On success, records the GitLab note ID back on the comment row.
+func (h *Handler) postCommentToGitLab(ctx context.Context, comment db.Comment, issue db.Issue) {
+	glIssue, err := h.Queries.GetGitLabIssueByIssueID(ctx, issue.ID)
+	if err != nil {
+		return // issue not linked to GitLab — nothing to relay
+	}
+	conn, err := h.Queries.GetGitLabConnectionByID(ctx, glIssue.ConnectionID)
+	if err != nil {
+		slog.Warn("gitlab relay: connection not found", "connection_id", uuidToString(glIssue.ConnectionID), "error", err)
+		return
+	}
+	var plainToken string
+	if conn.TokenExpiresAt.Valid && conn.TokenExpiresAt.Time.Before(time.Now()) {
+		plainToken, err = h.refreshGitLabToken(ctx, conn)
+		if err != nil {
+			slog.Warn("gitlab relay: token refresh failed", "error", err)
+			return
+		}
+	} else {
+		tokenBytes, decErr := base64.StdEncoding.DecodeString(conn.AccessToken)
+		if decErr != nil {
+			slog.Warn("gitlab relay: token decode failed", "error", decErr)
+			return
+		}
+		plain, openErr := h.GitLabBox.Open(tokenBytes)
+		if openErr != nil {
+			slog.Warn("gitlab relay: token decrypt failed", "error", openErr)
+			return
+		}
+		plainToken = string(plain)
+	}
+	body := AppendGitLabNoteRelaySentinel(comment.Content)
+	payload, _ := json.Marshal(map[string]string{"body": body})
+	apiURL := gitlabAPIURL() + fmt.Sprintf("/projects/%d/issues/%d/notes", glIssue.GlProjectID, glIssue.GlIssueIid)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payload))
+	if err != nil {
+		slog.Warn("gitlab relay: build request failed", "error", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+plainToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Warn("gitlab relay: post note failed", "error", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		slog.Warn("gitlab relay: post note returned error", "status", resp.StatusCode)
+		return
+	}
+	var note struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&note); err != nil || note.ID == 0 {
+		return
+	}
+	_ = h.Queries.SetCommentGitLabNoteID(ctx, db.SetCommentGitLabNoteIDParams{
+		ID:           comment.ID,
+		GitlabNoteID: pgtype.Int8{Int64: note.ID, Valid: true},
+	})
 }
 
 // containsLabel reports whether the labels slice contains a label with the given title.

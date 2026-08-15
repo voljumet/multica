@@ -566,7 +566,9 @@ func (d *Daemon) convergeRuntimeRegistrations(ctx context.Context) {
 	}
 	detected := make(map[string]struct{}, len(builtins))
 	for _, rt := range builtins {
-		detected[rt["type"]] = struct{}{}
+		if typ, _ := rt["type"].(string); typ != "" {
+			detected[typ] = struct{}{}
+		}
 	}
 
 	d.mu.Lock()

@@ -592,7 +592,8 @@ SELECT
     tu.input_tokens,
     tu.output_tokens,
     tu.cache_read_tokens,
-    tu.cache_write_tokens
+    tu.cache_write_tokens,
+    tu.cost_usd_ticks
 FROM task_usage tu
 JOIN agent_task_queue atq ON atq.id = tu.task_id
 WHERE atq.issue_id = $1
@@ -610,6 +611,7 @@ type ListIssueTaskUsageRow struct {
 	OutputTokens     int64              `json:"output_tokens"`
 	CacheReadTokens  int64              `json:"cache_read_tokens"`
 	CacheWriteTokens int64              `json:"cache_write_tokens"`
+	CostUsdTicks     pgtype.Int8        `json:"cost_usd_ticks"`
 }
 
 // Per-task per-model usage rows for one issue, newest task first. Powers the
@@ -638,6 +640,7 @@ func (q *Queries) ListIssueTaskUsage(ctx context.Context, issueID pgtype.UUID) (
 			&i.OutputTokens,
 			&i.CacheReadTokens,
 			&i.CacheWriteTokens,
+			&i.CostUsdTicks,
 		); err != nil {
 			return nil, err
 		}

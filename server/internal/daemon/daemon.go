@@ -614,13 +614,15 @@ func (d *Daemon) agentVersion(provider string) string {
 // builtinVersionsFromPayload extracts provider -> version from a registration
 // payload's BUILT-IN entries. Custom profile entries (profile_id set) are not
 // version-tracked — the drift path owns their lifecycle.
-func builtinVersionsFromPayload(runtimes []map[string]string) map[string]string {
+func builtinVersionsFromPayload(runtimes []map[string]any) map[string]string {
 	out := make(map[string]string, len(runtimes))
 	for _, rt := range runtimes {
-		if rt["profile_id"] != "" {
+		if profileID, _ := rt["profile_id"].(string); profileID != "" {
 			continue
 		}
-		out[rt["type"]] = rt["version"]
+		typ, _ := rt["type"].(string)
+		ver, _ := rt["version"].(string)
+		out[typ] = ver
 	}
 	return out
 }
@@ -684,7 +686,7 @@ func (d *Daemon) withWorkspaceRegisterLock(workspaceID string, fn func() error) 
 // record's write order matches the server's processing order
 // (workspaceRegisterLock). A workspace not yet tracked records nothing here;
 // the sync path seeds the record when it creates the workspaceState.
-func (d *Daemon) recordBuiltinVersionsSent(workspaceID string, runtimes []map[string]string) {
+func (d *Daemon) recordBuiltinVersionsSent(workspaceID string, runtimes []map[string]any) {
 	sent := builtinVersionsFromPayload(runtimes)
 	if len(sent) == 0 {
 		return
@@ -2070,7 +2072,7 @@ func (d *Daemon) probeBuiltinRuntime(ctx context.Context, name string, entry Age
 // payload because the probe failed, which is transient — tearing a working
 // runtime down over it is exactly what the unavailable/below-minimum verdict
 // split exists to prevent. Only a below-minimum verdict may demote.
-func (d *Daemon) detectBuiltinRuntimes(ctx context.Context) ([]map[string]string, map[string]string, map[string]string) {
+func (d *Daemon) detectBuiltinRuntimes(ctx context.Context) ([]map[string]any, map[string]string, map[string]string) {
 	type detected struct {
 		name    string
 		version string
@@ -2135,7 +2137,7 @@ func (d *Daemon) detectBuiltinRuntimes(ctx context.Context) ([]map[string]string
 	}
 	d.clearProviderDemotions(recovered, sampledAfter)
 
-	runtimes := make([]map[string]string, 0, len(results))
+	runtimes := make([]map[string]any, 0, len(results))
 	for _, r := range results {
 		displayName := providerDisplayName(r.name)
 		if d.cfg.DeviceName != "" {
@@ -2150,7 +2152,7 @@ func (d *Daemon) detectBuiltinRuntimes(ctx context.Context) ([]map[string]string
 		// Best-effort login identity (email / org). Non-secret local config
 		// only — used so multi-account workspaces can see which login is
 		// maxed on the provider-limits card.
-		if acct := resolveProviderAccount(name); acct != nil {
+		if acct := resolveProviderAccount(r.name); acct != nil {
 			applyProviderAccountToRegister(rt, acct)
 		}
 		runtimes = append(runtimes, rt)
@@ -2162,10 +2164,10 @@ func (d *Daemon) detectBuiltinRuntimes(ctx context.Context) ([]map[string]string
 // receive a shared built-in payload (see registerRuntimesForWorkspaceBatch) use
 // this before appending their own workspace's custom runtime profiles, so one
 // workspace's profiles can never leak into another's registration.
-func cloneRuntimeEntries(in []map[string]string) []map[string]string {
-	out := make([]map[string]string, 0, len(in))
+func cloneRuntimeEntries(in []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(in))
 	for _, entry := range in {
-		cp := make(map[string]string, len(entry))
+		cp := make(map[string]any, len(entry))
 		for k, v := range entry {
 			cp[k] = v
 		}
@@ -2251,7 +2253,7 @@ func preserveProvidersFromProbe(unavailable, belowMinimum map[string]string) map
 //
 // The caller must hold the workspace's register lock (withWorkspaceRegisterLock)
 // for this call, the apply, and the cleanup that follows it.
-func (d *Daemon) registerRuntimesForWorkspaceBatchLocked(ctx context.Context, workspaceID string, builtins []map[string]string) (*RegisterResponse, string, error) {
+func (d *Daemon) registerRuntimesForWorkspaceBatchLocked(ctx context.Context, workspaceID string, builtins []map[string]any) (*RegisterResponse, string, error) {
 	d.logger.Debug("registering runtimes for workspace", "workspace_id", workspaceID, "agent_count", len(d.agents()))
 	runtimes := cloneRuntimeEntries(builtins)
 	var failedProfiles []map[string]string
@@ -2318,7 +2320,7 @@ func (d *Daemon) registerRuntimesForWorkspaceBatchLocked(ctx context.Context, wo
 //
 // The caller must hold the workspace's register lock (withWorkspaceRegisterLock)
 // for this call, the merge, and the cleanup that follows it.
-func (d *Daemon) registerBuiltinRuntimesForWorkspaceLocked(ctx context.Context, workspaceID string, builtins []map[string]string) (*RegisterResponse, error) {
+func (d *Daemon) registerBuiltinRuntimesForWorkspaceLocked(ctx context.Context, workspaceID string, builtins []map[string]any) (*RegisterResponse, error) {
 	runtimes := cloneRuntimeEntries(builtins)
 	if len(runtimes) == 0 {
 		return nil, ErrNoRuntimesToRegister
@@ -3275,10 +3277,10 @@ func (d *Daemon) syncWorkspacesFromAPI(ctx context.Context, reconcileProfiles bo
 	// is the common case for the periodic sync — and scoped to this call, so
 	// the next sync re-detects and an in-place CLI upgrade is still reported.
 	var (
-		builtins       []map[string]string
+		builtins       []map[string]any
 		builtinsProbed bool
 	)
-	probeBuiltins := func() []map[string]string {
+	probeBuiltins := func() []map[string]any {
 		if !builtinsProbed {
 			builtins, _, _ = d.detectBuiltinRuntimes(ctx)
 			builtinsProbed = true

@@ -17,19 +17,9 @@ import {
 } from "@multica/ui/components/ui/select";
 
 const STYLES = [
-  { value: "adventurer", label: "Adventurer" },
-  { value: "adventurer-neutral", label: "Adventurer Neutral" },
-  { value: "big-ears", label: "Big Ears" },
-  { value: "croodles", label: "Croodles" },
-  { value: "fun-emoji", label: "Fun Emoji" },
-  { value: "lorelei", label: "Lorelei" },
-  { value: "micah", label: "Micah" },
-  { value: "notionists", label: "Notionists" },
-  { value: "open-peeps", label: "Open Peeps" },
-  { value: "personas", label: "Personas" },
-  { value: "pixel-art", label: "Pixel Art" },
+  { value: "adventurer-neutral", label: "Adventurer" },
   { value: "bottts-neutral", label: "Robots" },
-  { value: "shapes", label: "Shapes" },
+  { value: "fun-emoji", label: "Fun Emoji" },
   { value: "thumbs", label: "Thumbs" },
 ] as const;
 

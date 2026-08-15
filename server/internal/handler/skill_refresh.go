@@ -49,11 +49,11 @@ func (h *Handler) RefreshSkillFromURL(w http.ResponseWriter, r *http.Request) {
 	var imported *importedSkill
 	switch source {
 	case sourceClawHub:
-		imported, err = fetchFromClawHub(httpClient, normalized)
+		imported, err = fetchFromClawHub(r.Context(), httpClient, normalized)
 	case sourceSkillsSh:
-		imported, err = fetchFromSkillsSh(httpClient, normalized)
+		imported, err = fetchFromSkillsSh(r.Context(), httpClient, normalized)
 	case sourceGitHub:
-		imported, err = fetchFromGitHub(httpClient, normalized)
+		imported, err = fetchFromGitHub(r.Context(), httpClient, normalized)
 	case sourceGitLab:
 		var glToken string
 		glToken, err = h.gitlabAccessTokenForWorkspace(r.Context(), skill.WorkspaceID)

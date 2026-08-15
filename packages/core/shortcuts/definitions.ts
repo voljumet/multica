@@ -24,7 +24,9 @@ export type ShortcutActionId =
   | "goUsage"
   | "goRuntimes"
   | "goSkills"
-  | "goSettings";
+  | "goSettings"
+  | "navBack"
+  | "navForward";
 
 export type ShortcutCategory = "general" | "navigation";
 
@@ -113,6 +115,8 @@ export const SHORTCUT_ACTIONS: readonly ShortcutActionDefinition[] = [
   { id: "goRuntimes", category: "navigation", defaultShortcut: null, allowInEditable: false },
   { id: "goSkills", category: "navigation", defaultShortcut: null, allowInEditable: false },
   { id: "goSettings", category: "navigation", defaultShortcut: null, allowInEditable: false },
+  { id: "navBack", category: "navigation", defaultShortcut: primary("Left"), allowInEditable: false },
+  { id: "navForward", category: "navigation", defaultShortcut: primary("Right"), allowInEditable: false },
 ] as const;
 
 export const SHORTCUT_ACTION_BY_ID = Object.fromEntries(

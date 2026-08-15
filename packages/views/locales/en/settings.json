@@ -131,7 +131,9 @@
       "goUsage": { "label": "Go to Usage", "description": "Open usage analytics." },
       "goRuntimes": { "label": "Go to Runtimes", "description": "Open runtime configuration." },
       "goSkills": { "label": "Go to Skills", "description": "Open the skill library." },
-      "goSettings": { "label": "Go to Settings", "description": "Open workspace settings." }
+      "goSettings": { "label": "Go to Settings", "description": "Open workspace settings." },
+      "navBack": { "label": "Go back", "description": "Navigate to the previous page." },
+      "navForward": { "label": "Go forward", "description": "Navigate to the next page." }
     },
     "fixed": {
       "title": "Fixed system shortcuts",

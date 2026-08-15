@@ -246,7 +246,7 @@ func (q *Queries) DeleteComment(ctx context.Context, arg DeleteCommentParams) er
 }
 
 const findUnlinkedCommentByIssueAndContent = `-- name: FindUnlinkedCommentByIssueAndContent :one
-SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id FROM comment
+SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id, quick_action_id FROM comment
 WHERE issue_id = $1
   AND content = $2
   AND gitlab_note_id IS NULL
@@ -285,6 +285,7 @@ func (q *Queries) FindUnlinkedCommentByIssueAndContent(ctx context.Context, arg 
 		&i.ResolvedByID,
 		&i.SourceTaskID,
 		&i.GitlabNoteID,
+		&i.QuickActionID,
 	)
 	return i, err
 }
@@ -296,6 +297,34 @@ WHERE id = $1
 
 func (q *Queries) GetComment(ctx context.Context, id pgtype.UUID) (Comment, error) {
 	row := q.db.QueryRow(ctx, getComment, id)
+	var i Comment
+	err := row.Scan(
+		&i.ID,
+		&i.IssueID,
+		&i.AuthorType,
+		&i.AuthorID,
+		&i.Content,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ParentID,
+		&i.WorkspaceID,
+		&i.ResolvedAt,
+		&i.ResolvedByType,
+		&i.ResolvedByID,
+		&i.SourceTaskID,
+		&i.GitlabNoteID,
+		&i.QuickActionID,
+	)
+	return i, err
+}
+
+const getCommentByGitLabNoteID = `-- name: GetCommentByGitLabNoteID :one
+SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id, quick_action_id FROM comment WHERE gitlab_note_id = $1
+`
+
+func (q *Queries) GetCommentByGitLabNoteID(ctx context.Context, gitlabNoteID pgtype.Int8) (Comment, error) {
+	row := q.db.QueryRow(ctx, getCommentByGitLabNoteID, gitlabNoteID)
 	var i Comment
 	err := row.Scan(
 		&i.ID,
@@ -409,7 +438,7 @@ WITH RECURSIVE root_of AS (
     FROM comment p
     JOIN root_of r ON p.id = r.parent_id
 )
-SELECT c.id, c.issue_id, c.author_type, c.author_id, c.content, c.type, c.created_at, c.updated_at, c.parent_id, c.workspace_id, c.resolved_at, c.resolved_by_type, c.resolved_by_id, c.source_task_id, c.quick_action_id FROM comment c
+SELECT c.id, c.issue_id, c.author_type, c.author_id, c.content, c.type, c.created_at, c.updated_at, c.parent_id, c.workspace_id, c.resolved_at, c.resolved_by_type, c.resolved_by_id, c.source_task_id, c.gitlab_note_id, c.quick_action_id FROM comment c
 WHERE c.id = (SELECT id FROM root_of WHERE parent_id IS NULL LIMIT 1)
 `
 
@@ -623,7 +652,7 @@ func (q *Queries) ListCommentsByIDsForIssue(ctx context.Context, arg ListComment
 }
 
 const listCommentsForIssue = `-- name: ListCommentsForIssue :many
-SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, quick_action_id FROM (
+SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id, quick_action_id FROM (
     SELECT id, issue_id, author_type, author_id, content, type, created_at, updated_at, parent_id, workspace_id, resolved_at, resolved_by_type, resolved_by_id, source_task_id, gitlab_note_id, quick_action_id FROM comment
     WHERE issue_id = $1 AND workspace_id = $2
     ORDER BY created_at DESC, id DESC
@@ -881,7 +910,6 @@ func (q *Queries) ListRecentThreadCommentsForIssue(ctx context.Context, arg List
 			&i.ResolvedByType,
 			&i.ResolvedByID,
 			&i.SourceTaskID,
-			&i.GitlabNoteID,
 			&i.QuickActionID,
 			&i.ThreadRootID,
 			&i.ThreadLastActivityAt,
@@ -1078,7 +1106,6 @@ func (q *Queries) ListRootCommentsForIssue(ctx context.Context, arg ListRootComm
 			&i.ResolvedByType,
 			&i.ResolvedByID,
 			&i.SourceTaskID,
-			&i.GitlabNoteID,
 			&i.QuickActionID,
 			&i.ReplyCount,
 			&i.LastActivityAt,
@@ -1196,7 +1223,6 @@ func (q *Queries) ListRootCommentsSinceForIssue(ctx context.Context, arg ListRoo
 			&i.ResolvedByType,
 			&i.ResolvedByID,
 			&i.SourceTaskID,
-			&i.GitlabNoteID,
 			&i.QuickActionID,
 			&i.ReplyCount,
 			&i.LastActivityAt,
@@ -1351,7 +1377,6 @@ func (q *Queries) ListThreadCommentsForIssuePaged(ctx context.Context, arg ListT
 			&i.ResolvedByType,
 			&i.ResolvedByID,
 			&i.SourceTaskID,
-			&i.GitlabNoteID,
 			&i.QuickActionID,
 		); err != nil {
 			return nil, err
@@ -1404,6 +1429,20 @@ func (q *Queries) ResolveComment(ctx context.Context, arg ResolveCommentParams) 
 		&i.QuickActionID,
 	)
 	return i, err
+}
+
+const setCommentGitLabNoteID = `-- name: SetCommentGitLabNoteID :exec
+UPDATE comment SET gitlab_note_id = $2 WHERE id = $1
+`
+
+type SetCommentGitLabNoteIDParams struct {
+	ID           pgtype.UUID `json:"id"`
+	GitlabNoteID pgtype.Int8 `json:"gitlab_note_id"`
+}
+
+func (q *Queries) SetCommentGitLabNoteID(ctx context.Context, arg SetCommentGitLabNoteIDParams) error {
+	_, err := q.db.Exec(ctx, setCommentGitLabNoteID, arg.ID, arg.GitlabNoteID)
+	return err
 }
 
 const unresolveComment = `-- name: UnresolveComment :one

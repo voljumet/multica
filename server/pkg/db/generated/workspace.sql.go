@@ -314,45 +314,6 @@ func (q *Queries) ListDaemonWorkspaces(ctx context.Context, userID pgtype.UUID) 
 	return items, nil
 }
 
-const listWorkspacesWithRepos = `-- name: ListWorkspacesWithRepos :many
-SELECT id, name, slug, description, settings, created_at, updated_at, context, repos, issue_prefix, issue_counter, avatar_url
-FROM workspace
-WHERE repos IS NOT NULL AND jsonb_array_length(repos) > 0
-`
-
-func (q *Queries) ListWorkspacesWithRepos(ctx context.Context) ([]Workspace, error) {
-	rows, err := q.db.Query(ctx, listWorkspacesWithRepos)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Workspace{}
-	for rows.Next() {
-		var i Workspace
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Slug,
-			&i.Description,
-			&i.Settings,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Context,
-			&i.Repos,
-			&i.IssuePrefix,
-			&i.IssueCounter,
-			&i.AvatarUrl,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listWorkspaces = `-- name: ListWorkspaces :many
 SELECT w.id, w.name, w.slug, w.description, w.settings,
        w.created_at, w.updated_at, w.context, w.repos,
@@ -386,6 +347,60 @@ func (q *Queries) ListWorkspaces(ctx context.Context, userID pgtype.UUID) ([]Wor
 			&i.IssueCounter,
 			&i.AvatarUrl,
 			&i.AttributionFailClosed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspacesWithRepos = `-- name: ListWorkspacesWithRepos :many
+SELECT id, name, slug, description, settings, created_at, updated_at, context, repos, issue_prefix, issue_counter, avatar_url
+FROM workspace
+WHERE repos IS NOT NULL AND jsonb_array_length(repos) > 0
+`
+
+type ListWorkspacesWithReposRow struct {
+	ID           pgtype.UUID        `json:"id"`
+	Name         string             `json:"name"`
+	Slug         string             `json:"slug"`
+	Description  pgtype.Text        `json:"description"`
+	Settings     []byte             `json:"settings"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	Context      pgtype.Text        `json:"context"`
+	Repos        []byte             `json:"repos"`
+	IssuePrefix  string             `json:"issue_prefix"`
+	IssueCounter int32              `json:"issue_counter"`
+	AvatarUrl    pgtype.Text        `json:"avatar_url"`
+}
+
+func (q *Queries) ListWorkspacesWithRepos(ctx context.Context) ([]ListWorkspacesWithReposRow, error) {
+	rows, err := q.db.Query(ctx, listWorkspacesWithRepos)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWorkspacesWithReposRow{}
+	for rows.Next() {
+		var i ListWorkspacesWithReposRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Description,
+			&i.Settings,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Context,
+			&i.Repos,
+			&i.IssuePrefix,
+			&i.IssueCounter,
+			&i.AvatarUrl,
 		); err != nil {
 			return nil, err
 		}

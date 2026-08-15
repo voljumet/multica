@@ -3,6 +3,11 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { motion } from "motion/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
+import {
+  getShortcut,
+  shortcutMatchesEvent,
+} from "@multica/core/shortcuts";
+import { shouldIgnoreGlobalShortcutEvent } from "@multica/views/layout";
 import { useTabHistory } from "@/hooks/use-tab-history";
 import { useActiveTitleSync } from "@/hooks/use-tab-sync";
 import {
@@ -102,6 +107,18 @@ function useNativeNavigationGestures() {
       }
     });
   }, [goBack, goForward]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldIgnoreGlobalShortcutEvent(event)) return;
+      if (shortcutMatchesEvent(getShortcut("navForward"), event)) {
+        event.preventDefault();
+        goForward();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [goForward]);
 }
 
 // The main area's top bar doubles as a window drag region. When the sidebar
