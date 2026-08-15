@@ -43,7 +43,7 @@ export function DicebearAvatarPicker({
   trigger,
 }: DicebearAvatarPickerProps) {
   const [open, setOpen] = useState(false);
-  const [style, setStyle] = useState<StyleValue>("adventurer");
+  const [style, setStyle] = useState<StyleValue>("adventurer-neutral");
   const [seed, setSeed] = useState(randomSeed);
 
   const url = dicebearUrl(style, seed);
