@@ -190,25 +190,36 @@ function AssigneePickerImpl({
         <span className="text-muted-foreground">{t(($) => $.pickers.assignee.trigger_unassigned)}</span>
       </PickerItem>
 
-      {/* Members */}
-      {filteredMembers.length > 0 && (
-        <PickerSection label={t(($) => $.pickers.assignee.members_group)}>
-          {filteredMembers.map((m) => (
-            <PickerItem
-              key={m.user_id}
-              selected={isSelected("member", m.user_id)}
-              onClick={() => {
-                onUpdate({
-                  assignee_type: "member",
-                  assignee_id: m.user_id,
-                });
-                setOpen(false);
-              }}
-            >
-              <ActorAvatar actorType="member" actorId={m.user_id} size="sm" />
-              <span className="truncate">{m.name}</span>
-            </PickerItem>
-          ))}
+      {/* Squads — group ownership; assigning to a squad routes the issue to
+          its leader agent on the backend. */}
+      {filteredSquads.length > 0 && (
+        <PickerSection label={t(($) => $.pickers.assignee.squads_group)}>
+          {filteredSquads.map((s) => {
+            const runtimeBound = runnableAgentIds.has(s.leader_id);
+            return (
+              <PickerItem
+                key={s.id}
+                selected={isSelected("squad", s.id)}
+                disabled={!runtimeBound}
+                tooltip={
+                  runtimeBound
+                    ? undefined
+                    : t(($) => $.pickers.assignee.squad_runtime_required)
+                }
+                onClick={() => {
+                  if (!runtimeBound) return;
+                  onUpdate({
+                    assignee_type: "squad",
+                    assignee_id: s.id,
+                  });
+                  setOpen(false);
+                }}
+              >
+                <ActorAvatar actorType="squad" actorId={s.id} size="sm" />
+                <span className="truncate">{s.name}</span>
+              </PickerItem>
+            );
+          })}
         </PickerSection>
       )}
 
@@ -259,36 +270,25 @@ function AssigneePickerImpl({
         </PickerSection>
       )}
 
-      {/* Squads — group ownership; assigning to a squad routes the issue to
-          its leader agent on the backend. */}
-      {filteredSquads.length > 0 && (
-        <PickerSection label={t(($) => $.pickers.assignee.squads_group)}>
-          {filteredSquads.map((s) => {
-            const runtimeBound = runnableAgentIds.has(s.leader_id);
-            return (
-              <PickerItem
-                key={s.id}
-                selected={isSelected("squad", s.id)}
-                disabled={!runtimeBound}
-                tooltip={
-                  runtimeBound
-                    ? undefined
-                    : t(($) => $.pickers.assignee.squad_runtime_required)
-                }
-                onClick={() => {
-                  if (!runtimeBound) return;
-                  onUpdate({
-                    assignee_type: "squad",
-                    assignee_id: s.id,
-                  });
-                  setOpen(false);
-                }}
-              >
-                <ActorAvatar actorType="squad" actorId={s.id} size="sm" />
-                <span className="truncate">{s.name}</span>
-              </PickerItem>
-            );
-          })}
+      {/* Members */}
+      {filteredMembers.length > 0 && (
+        <PickerSection label={t(($) => $.pickers.assignee.members_group)}>
+          {filteredMembers.map((m) => (
+            <PickerItem
+              key={m.user_id}
+              selected={isSelected("member", m.user_id)}
+              onClick={() => {
+                onUpdate({
+                  assignee_type: "member",
+                  assignee_id: m.user_id,
+                });
+                setOpen(false);
+              }}
+            >
+              <ActorAvatar actorType="member" actorId={m.user_id} size="sm" />
+              <span className="truncate">{m.name}</span>
+            </PickerItem>
+          ))}
         </PickerSection>
       )}
 
