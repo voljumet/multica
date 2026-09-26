@@ -12,6 +12,12 @@ export type OriginInfo = {
   runtime_id?: string;
   source_path?: string;
   source_url?: string;
+  owner?: string;
+  repo?: string;
+  ref?: string;
+  path?: string;
+  skill?: string;
+  slug?: string;
 };
 
 export function readOrigin(skill: SkillSummary): OriginInfo {
@@ -27,21 +33,74 @@ export function readOrigin(skill: SkillSummary): OriginInfo {
 }
 
 /**
- * True when the skill was imported from a hosted URL we can re-fetch
- * (GitHub / ClawHub / Skills.sh). Manual and runtime-local skills have no
- * remote source, so they cannot use "Update from URL".
+ * Whether the skill can be re-downloaded from where it was imported. Only
+ * hosted sources qualify: runtime-local copies re-import through the daemon,
+ * and manual / archive-uploaded skills have no upstream at all. The server
+ * enforces the same rule on `POST /api/skills/:id/refresh`. GitLab is
+ * included alongside the other hosted origins — the server resolves it via
+ * the workspace's configured GitLab host (see `gitlabConfiguredHost` /
+ * `detectImportSource` in skill.go), which is why it isn't validated against
+ * a fixed host list in `ORIGIN_SOURCE_HOSTS` below.
  */
+export function isRefreshableOrigin(origin: OriginInfo): boolean {
+  return (
+    (origin.type === "github" ||
+      origin.type === "skills_sh" ||
+      origin.type === "clawhub" ||
+      origin.type === "gitlab") &&
+    typeof origin.source_url === "string" &&
+    origin.source_url.length > 0
+  );
+}
+
+/** True when the skill was imported from a hosted URL we can re-fetch. Alias
+ *  kept for callers that predate the shared `isRefreshableOrigin(readOrigin(...))`
+ *  shape. */
 export function canRefreshFromURL(skill: SkillSummary): boolean {
-  const origin = readOrigin(skill);
-  if (
-    origin.type !== "github" &&
-    origin.type !== "clawhub" &&
-    origin.type !== "skills_sh" &&
-    origin.type !== "gitlab"
-  ) {
-    return false;
+  return isRefreshableOrigin(readOrigin(skill));
+}
+
+// Hosts each hosted origin type may legitimately point at — the client-side
+// mirror of the server's `detectImportSource` allowlist (skill.go). Keyed by
+// origin type so a hand-edited config can't dress an arbitrary host up as a
+// GitHub / Skills.sh / ClawHub link.
+const ORIGIN_SOURCE_HOSTS: Partial<Record<OriginInfo["type"], readonly string[]>> = {
+  github: ["github.com", "www.github.com"],
+  skills_sh: ["skills.sh", "www.skills.sh"],
+  clawhub: ["clawhub.ai", "www.clawhub.ai"],
+};
+
+/**
+ * The origin's `source_url` validated for use as a link destination, or null.
+ *
+ * `origin` is persisted JSONB that anyone able to update the skill can write
+ * verbatim (`PATCH /api/skills/:id` does not validate `config`), so before a
+ * value becomes an `href` it must survive being treated as a destination:
+ * http(s) only, and the host must match the declared origin type. Everything
+ * else — manual/runtime_local origins, missing or malformed URLs, `data:` and
+ * other schemes, host/type mismatches — returns null so callers fall back to
+ * plain text.
+ *
+ * Deliberately stricter than `isRefreshableOrigin`: the server's refresh path
+ * re-validates provenance itself and also accepts scheme-less values (e.g. a
+ * bare ClawHub slug), which are refreshable but meaningless as an `href`.
+ */
+export function originSourceUrl(origin: OriginInfo | null): string | null {
+  if (!origin) return null;
+  const hosts = ORIGIN_SOURCE_HOSTS[origin.type];
+  if (!hosts) return null;
+  if (typeof origin.source_url !== "string" || origin.source_url.length === 0) {
+    return null;
   }
-  return Boolean(origin.source_url?.trim());
+  let parsed: URL;
+  try {
+    parsed = new URL(origin.source_url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  if (!hosts.includes(parsed.hostname.toLowerCase())) return null;
+  return origin.source_url;
 }
 
 /**

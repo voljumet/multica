@@ -20,6 +20,7 @@ import {
 import { issueDetailOptions } from "@/data/queries/issues";
 import { useUpdateIssue } from "@/data/mutations/issues";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { useT } from "@/lib/i18n";
 
 export default function IssueDueDatePickerRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -58,6 +59,7 @@ function DueDateHeader({
   onDone: () => void;
   onClear: () => void;
 }) {
+  const { t } = useT("issues");
   return (
     <View className="flex-row items-center justify-end px-4 pt-4 pb-2">
       <View className="flex-row items-center gap-1">
@@ -67,7 +69,9 @@ function DueDateHeader({
             hitSlop={6}
             className="px-2 py-1 rounded-md active:bg-secondary"
           >
-            <Text className="text-sm text-destructive">Clear</Text>
+            <Text className="text-sm text-destructive">
+              {t("picker.clear")}
+            </Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -75,7 +79,9 @@ function DueDateHeader({
           hitSlop={6}
           className="px-2 py-1 rounded-md active:bg-secondary"
         >
-          <Text className="text-sm font-medium text-primary">Done</Text>
+          <Text className="text-sm font-medium text-primary">
+            {t("common:actions.done")}
+          </Text>
         </Pressable>
       </View>
     </View>

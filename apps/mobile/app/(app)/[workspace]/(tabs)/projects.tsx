@@ -20,10 +20,12 @@ import { HeaderActions } from "@/components/ui/app-header-actions";
 import { ProjectRow } from "@/components/project/project-row";
 import { projectListOptions } from "@/data/queries/projects";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { useT } from "@/lib/i18n";
 
 export default function ProjectsTab() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
+  const { t } = useT("projects");
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery(
     projectListOptions(wsId),
@@ -47,11 +49,7 @@ export default function ProjectsTab() {
         title="Projects"
         right={
           <>
-            <IconButton
-              name="add"
-              onPress={goCreate}
-              accessibilityLabel="New project"
-            />
+            <PlusButton onPress={goCreate} />
             <HeaderActions />
           </>
         }
@@ -63,11 +61,12 @@ export default function ProjectsTab() {
       ) : error ? (
         <View className="px-4 gap-3 pt-4">
           <Text className="text-sm text-destructive">
-            Failed to load projects:{" "}
-            {error instanceof Error ? error.message : "unknown error"}
+            {t("errors.load_failed", {
+              message: error instanceof Error ? error.message : "unknown",
+            })}
           </Text>
           <Button variant="outline" onPress={() => refetch()}>
-            <Text>Retry</Text>
+            <Text>{t("common:actions.retry")}</Text>
           </Button>
         </View>
       ) : sorted.length === 0 ? (
@@ -97,18 +96,26 @@ export default function ProjectsTab() {
   );
 }
 
+function PlusButton({ onPress }: { onPress: () => void }) {
+  const { t } = useT("projects");
+  return (
+    <IconButton
+      name="add"
+      onPress={onPress}
+      accessibilityLabel={t("navigation:routes.new_project")}
+    />
+  );
+}
+
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const { t } = useT("projects");
   return (
     <View className="flex-1 items-center justify-center px-6 gap-4">
       <Text className="text-base font-medium text-foreground">
-        No projects yet
-      </Text>
-      <Text className="text-sm text-muted-foreground text-center">
-        Group related issues into a project to track progress and assign a
-        lead.
+        {t("list.empty")}
       </Text>
       <Button variant="default" onPress={onCreate}>
-        <Text>Create project</Text>
+        <Text>{t("common:actions.create")}</Text>
       </Button>
     </View>
   );

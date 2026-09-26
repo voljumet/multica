@@ -16,6 +16,7 @@ import type {
   DaemonPrefs,
   LocalRuntimeProbe,
 } from "../shared/daemon-types";
+import type { TabSelectionShortcutKey } from "../shared/main-renderer-messages";
 
 interface DesktopAPI {
   /** App version + normalized OS, captured synchronously at preload time. */
@@ -103,13 +104,21 @@ interface DesktopAPI {
       | "not_writable"
       | "error";
     error?: string;
+    /** Whether the path sits inside a git working tree. Only set when ok=true.
+     *  Drives the worktree execution-mode option in the resource UI. */
+    is_git_repo?: boolean;
   }>;
   /** Listen for Cmd/Ctrl+W tab-close requests from the main process.
    *  Returns an unsubscribe function. */
   onCloseActiveTab: (callback: () => void) => () => void;
-  /** Listen for "open Settings" requests from the main process (e.g. tray menu).
-   *  Returns an unsubscribe function. */
+  /** Listen for "open Settings" requests from the main process (e.g. tray
+   *  menu, or Cmd/Ctrl+, from any window). Returns an unsubscribe function. */
   onOpenSettings: (callback: () => void) => () => void;
+  /** Listen for Cmd/Ctrl+1..9 tab-selection requests, delivered to the main
+   *  window whichever window had focus. Returns an unsubscribe function. */
+  onSelectTabShortcut: (
+    callback: (key: TabSelectionShortcutKey) => void,
+  ) => () => void;
   /** Ask the main process to close the window. */
   closeWindow: () => void;
   /** Open an issue-detail tab in a dedicated native window. */

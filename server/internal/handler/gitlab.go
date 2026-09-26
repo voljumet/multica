@@ -530,7 +530,7 @@ func (h *Handler) handleGitLabNoteEvent(ctx context.Context, conn db.GitlabConne
 	}
 
 	h.publish(protocol.EventCommentCreated, uuidToString(issue.WorkspaceID), authorType, uuidToString(authorID), map[string]any{
-		"comment": commentToResponse(comment, nil, nil),
+		"comment": commentToResponse(comment.Comment(), nil, nil),
 	})
 }
 
@@ -1067,7 +1067,7 @@ func (h *Handler) syncGitLabLabelsToIssue(ctx context.Context, workspaceID, issu
 			id = created.ID
 			byName[lower] = id
 		}
-		if err := h.Queries.AttachLabelToIssue(ctx, db.AttachLabelToIssueParams{
+		if _, err := h.Queries.AttachLabelToIssue(ctx, db.AttachLabelToIssueParams{
 			IssueID:     issueID,
 			LabelID:     id,
 			WorkspaceID: workspaceID,

@@ -20,7 +20,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@multica/ui/components/ui/dialog";
 import {
   Popover,
@@ -150,9 +149,6 @@ export function CreateSquadModal({ onClose }: { onClose: () => void }) {
           <DialogTitle className="text-title-sm font-semibold">
             {t(($) => $.create_squad.title)}
           </DialogTitle>
-          <DialogDescription className="mt-1 text-caption">
-            {t(($) => $.create_squad.description)}
-          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-5">

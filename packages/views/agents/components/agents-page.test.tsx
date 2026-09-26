@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import type { Agent } from "@multica/core/types";
 import type { AgentActivity } from "@multica/core/agents";
+import type { SupportedLocale } from "@multica/core/i18n";
 import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider, type NavigationAdapter } from "../../navigation";
 import { AgentsPage } from "./agents-page";
@@ -102,6 +103,8 @@ vi.mock("@multica/core/agents", () => ({
     return "specific-people";
   },
   ALL_ACCESS_SCOPES: ["workspace", "specific-people", "owner-only"],
+  isGitLabPersonaAgent: (agent: { system_key?: string | null }) =>
+    typeof agent.system_key === "string" && agent.system_key.startsWith("gitlab:"),
 }));
 
 vi.mock("@multica/core/agents/stores", () => ({
@@ -196,8 +199,8 @@ function makeAgent(over: Partial<Agent>): Agent {
 // Build a 30-bucket activity series whose most-recent bucket with runs is
 // `daysAgo` days back — `lastActiveDaysAgo` reads exactly this.
 function activityLastActive(daysAgo: number): AgentActivity {
-  const buckets = Array.from({ length: 30 }, () => ({ total: 0, failed: 0 }));
-  buckets[29 - daysAgo] = { total: 1, failed: 0 };
+  const buckets = Array.from({ length: 30 }, () => ({ total: 0, failed: 0, completed: 0, cancelled: 0 }));
+  buckets[29 - daysAgo] = { total: 1, failed: 0, completed: 1, cancelled: 0 };
   return { buckets, daysSinceCreated: 30 };
 }
 
@@ -213,16 +216,18 @@ function makeAdapter(
     back: vi.fn(),
     pathname: "/test-workspace/agents",
     searchParams: new URLSearchParams(),
+    hash: "",
     getShareableUrl: (p) => p,
     ...overrides,
   };
 }
 
-function renderPage() {
+function renderPage(locale?: SupportedLocale) {
   renderWithI18n(
     <NavigationProvider value={makeAdapter()}>
       <AgentsPage />
     </NavigationProvider>,
+    { locale },
   );
 }
 
@@ -333,5 +338,15 @@ describe("AgentsPage listReady gate", () => {
 
     expect(screen.getByText("No agents yet")).toBeInTheDocument();
     expect(screen.queryByTestId("skeleton")).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentsPage docs link", () => {
+  it("points Learn more at the viewer's docs locale", () => {
+    renderPage("fr");
+
+    expect(
+      screen.getByRole("link", { name: "En savoir plus →" }),
+    ).toHaveAttribute("href", "https://multica.ai/docs/fr/agents");
   });
 });

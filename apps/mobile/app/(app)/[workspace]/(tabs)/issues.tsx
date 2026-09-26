@@ -28,22 +28,20 @@ import {
   type IssuesScope,
 } from "@/data/stores/issues-view-store";
 import { useClearFiltersOnWorkspaceChange } from "@/lib/use-clear-filters-on-workspace-change";
-import {
-  BOARD_STATUSES,
-  PRIORITY_LABEL,
-  STATUS_LABEL,
-} from "@/lib/issue-status";
+import { PRIORITY_LABEL } from "@/lib/issue-status";
+import { useT } from "@/lib/i18n";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
+import { groupIssuesByStatus } from "@/lib/group-issues-by-status";
 import { filterIssues } from "@/lib/filter-issues";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 
-type IssueSection = { status: IssueStatus; data: Issue[]; count: number };
-
-const SCOPES: { value: IssuesScope; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "members", label: "Members" },
-  { value: "agents", label: "Agents" },
-];
+// Scope tab definitions. Mirrors web `issuesScopeStore`. Counts are NOT
+// rendered on the pill labels — web's `IssuesHeader` doesn't show them
+// either, and on SE3 (375pt) "(123)" appended to each label pushes the
+// row past the safe width when filter icon shares the row. Per-status
+// counts still appear on the SectionList headers below.
+const SCOPES: IssuesScope[] = ["all", "members", "agents"];
 
 const PAGE_SIZE = 100;
 
@@ -51,6 +49,7 @@ export default function IssuesTab() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const qc = useQueryClient();
+  const { t } = useT("issues");
 
   const scope = useIssuesViewStore((s) => s.scope);
   const setScope = useIssuesViewStore((s) => s.setScope);
@@ -77,6 +76,10 @@ export default function IssuesTab() {
     issueListOptions(wsId),
   );
 
+  // Only the active-filter chips need the catalog — sections group on the
+  // category the server already resolved onto each issue. (MUL-6243)
+  const catalog = useIssueStatuses();
+
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   // true until a page comes back with fewer than PAGE_SIZE rows
   const hasMore = useRef(true);
@@ -88,18 +91,15 @@ export default function IssuesTab() {
 
   const fetchMore = useCallback(async () => {
     if (!wsId || !hasMore.current || isFetchingMore) return;
-    const current = qc.getQueryData<import("@multica/core/types").Issue[]>(
-      issueKeys.list(wsId),
-    );
+    const current = qc.getQueryData<Issue[]>(issueKeys.list(wsId));
     const offset = current?.length ?? 0;
     setIsFetchingMore(true);
     try {
       const res = await api.listIssues({ offset });
       if (res.issues.length < PAGE_SIZE) hasMore.current = false;
       if (res.issues.length > 0) {
-        qc.setQueryData<import("@multica/core/types").Issue[]>(
-          issueKeys.list(wsId),
-          (old) => (old ? [...old, ...res.issues] : res.issues),
+        qc.setQueryData<Issue[]>(issueKeys.list(wsId), (old) =>
+          old ? [...old, ...res.issues] : res.issues,
         );
       }
     } finally {
@@ -107,9 +107,8 @@ export default function IssuesTab() {
     }
   }, [wsId, isFetchingMore, qc]);
 
-  const allIssues = data ?? [];
-
   const scopedIssues = useMemo(() => {
+    const allIssues = data ?? [];
     if (scope === "members") {
       return allIssues.filter((i) => i.assignee_type === "member");
     }
@@ -119,7 +118,7 @@ export default function IssuesTab() {
       );
     }
     return allIssues;
-  }, [allIssues, scope]);
+  }, [data, scope]);
 
   const filtered = useMemo(() => {
     const f = filterIssues(scopedIssues, statusFilters, priorityFilters);
@@ -127,25 +126,10 @@ export default function IssuesTab() {
     return [...f].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   }, [scopedIssues, statusFilters, priorityFilters, sortByLastEdited]);
 
-  const sections = useMemo<IssueSection[]>(() => {
-    if (filtered.length === 0) return [];
-    const byStatus = new Map<IssueStatus, Issue[]>();
-    for (const issue of filtered) {
-      const list = byStatus.get(issue.status);
-      if (list) list.push(issue);
-      else byStatus.set(issue.status, [issue]);
-    }
-    const visibleStatuses =
-      statusFilters.length > 0
-        ? BOARD_STATUSES.filter((s) => statusFilters.includes(s))
-        : BOARD_STATUSES;
-    return visibleStatuses
-      .map((status) => {
-        const data = byStatus.get(status) ?? [];
-        return { status, data, count: data.length };
-      })
-      .filter((s) => s.count > 0);
-  }, [filtered, statusFilters]);
+  const sections = useMemo(
+    () => groupIssuesByStatus(filtered, catalog.statuses),
+    [filtered, catalog.statuses],
+  );
 
   const displaySections = useMemo(
     () =>
@@ -158,6 +142,10 @@ export default function IssuesTab() {
 
   const hasActiveFilters =
     statusFilters.length > 0 || priorityFilters.length > 0 || sortByLastEdited;
+  const scopeItems = SCOPES.map((value) => ({
+    value,
+    label: t(`tabs.${value}`),
+  }));
 
   const showEmptyState = !isLoading && !error && filtered.length === 0;
 
@@ -165,7 +153,7 @@ export default function IssuesTab() {
     <View className="flex-1 bg-background">
       <Header title="Issues" right={<HeaderActions />} />
       <ScopeToolbar
-        scopes={SCOPES}
+        scopes={scopeItems}
         scope={scope}
         onChange={(v) => setScope(v)}
         onOpenFilter={openFilter}
@@ -175,6 +163,7 @@ export default function IssuesTab() {
         <ActiveFilterChips
           statusFilters={statusFilters}
           priorityFilters={priorityFilters}
+          statusLabelOf={catalog.labelOf}
           onClearStatus={(s) =>
             useIssuesViewStore.getState().toggleStatusFilter(s)
           }
@@ -188,19 +177,20 @@ export default function IssuesTab() {
       ) : error ? (
         <View className="px-4 gap-3 pt-4">
           <Text className="text-sm text-destructive">
-            Failed to load issues:{" "}
-            {error instanceof Error ? error.message : "unknown error"}
+            {t("errors.load_failed", {
+              message: error instanceof Error ? error.message : "unknown",
+            })}
           </Text>
           <Button variant="outline" onPress={() => refetch()}>
-            <Text>Retry</Text>
+            <Text>{t("common:actions.retry")}</Text>
           </Button>
         </View>
       ) : showEmptyState ? (
         <EmptyState
           message={
             hasActiveFilters
-              ? "No issues match the current filters."
-              : emptyMessageForScope(scope)
+              ? t("empty.filtered")
+              : t(`empty.${scope}`)
           }
         />
       ) : (
@@ -214,7 +204,7 @@ export default function IssuesTab() {
           renderSectionHeader={({ section }) => (
             <SectionHeader
               status={section.status}
-              count={section.count}
+              count={section.data.length}
               collapsed={collapsedStatuses.includes(section.status)}
               onToggle={() => toggleStatusCollapse(section.status)}
             />
@@ -255,6 +245,7 @@ function FilterButton({
   onPress: () => void;
   hasActiveFilters: boolean;
 }) {
+  const { t } = useT("issues");
   const { colorScheme } = useColorScheme();
   return (
     <View style={{ position: "relative" }} className="ml-2">
@@ -262,7 +253,7 @@ function FilterButton({
         variant="outline"
         size="sm"
         onPress={onPress}
-        accessibilityLabel="Filter"
+        accessibilityLabel={t("filters.title")}
         className="w-9 px-0"
       >
         <Ionicons
@@ -329,27 +320,31 @@ function ScopeToolbar<S extends string>({
 function ActiveFilterChips({
   statusFilters,
   priorityFilters,
+  statusLabelOf,
   onClearStatus,
   onClearPriority,
 }: {
   statusFilters: IssueStatus[];
   priorityFilters: IssuePriority[];
+  /** Resolves a status KEY — which can be a custom one — to its label. */
+  statusLabelOf: (statusKey: string) => string;
   onClearStatus: (s: IssueStatus) => void;
   onClearPriority: (p: IssuePriority) => void;
 }) {
+  const { t } = useT("issues");
   return (
     <View className="flex-row flex-wrap gap-1.5 px-4 pb-2">
       {statusFilters.map((s) => (
         <Chip
           key={`s-${s}`}
-          label={STATUS_LABEL[s]}
+          label={statusLabelOf(s)}
           onClear={() => onClearStatus(s)}
         />
       ))}
       {priorityFilters.map((p) => (
         <Chip
           key={`p-${p}`}
-          label={PRIORITY_LABEL[p]}
+          label={t(PRIORITY_LABEL[p])}
           onClear={() => onClearPriority(p)}
         />
       ))}
@@ -374,6 +369,7 @@ function Chip({ label, onClear }: { label: string; onClear: () => void }) {
   );
 }
 
+// The section header names its concrete built-in or custom status.
 function SectionHeader({
   status,
   count,
@@ -387,16 +383,24 @@ function SectionHeader({
 }) {
   const { colorScheme } = useColorScheme();
   const t = THEME[colorScheme];
+  const catalog = useIssueStatuses();
   return (
     <Pressable
       onPress={onToggle}
       className="flex-row items-center gap-2 px-4 py-2 bg-background active:bg-secondary"
       accessibilityRole="button"
-      accessibilityLabel={`${STATUS_LABEL[status]}, ${count} issues, ${collapsed ? "collapsed" : "expanded"}`}
+      accessibilityLabel={`${catalog.labelOf(status)}, ${count} issues, ${collapsed ? "collapsed" : "expanded"}`}
     >
-      <StatusIcon status={status} size={14} />
+      {/* Category keys resolve to their canonical lifecycle glyph. */}
+      <StatusIcon
+        status={status}
+        category={catalog.categoryOf(status)}
+        icon={catalog.iconOf(status)}
+        color={catalog.colorOf(status)}
+        size={14}
+      />
       <Text className="flex-1 text-xs uppercase tracking-wider text-muted-foreground font-medium">
-        {STATUS_LABEL[status]}
+        {catalog.labelOf(status)}
       </Text>
       <Text className="text-xs text-muted-foreground/60 mr-1">{count}</Text>
       <Ionicons
@@ -416,15 +420,4 @@ function EmptyState({ message }: { message: string }) {
       </Text>
     </View>
   );
-}
-
-function emptyMessageForScope(scope: IssuesScope): string {
-  switch (scope) {
-    case "all":
-      return "No issues in this workspace.";
-    case "members":
-      return "No issues assigned to a member.";
-    case "agents":
-      return "No issues assigned to agents or squads.";
-  }
 }

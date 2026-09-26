@@ -32,6 +32,7 @@ import {
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   issueId: string;
@@ -39,6 +40,7 @@ interface Props {
 
 export function AgentHeaderBadge({ issueId }: Props) {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { t } = useT("issues");
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const { colorScheme } = useColorScheme();
   const mutedFg = THEME[colorScheme].mutedForeground;
@@ -79,7 +81,7 @@ export function AgentHeaderBadge({ issueId }: Props) {
       <Pressable
         onPress={openRuns}
         hitSlop={8}
-        accessibilityLabel="Agent working — open runs"
+        accessibilityLabel={t("a11y.agent_working")}
         className="flex-row items-center gap-1.5 px-2 py-1 active:opacity-60"
       >
         <AvatarStack actors={actors} max={2} size={20} />

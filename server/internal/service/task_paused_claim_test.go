@@ -68,7 +68,7 @@ func TestExpireStaleQueuedTasksSkipsPausedAgents(t *testing.T) {
 	}
 
 	expired, err := queries.ExpireStaleQueuedTasks(ctx, db.ExpireStaleQueuedTasksParams{
-		TtlSecs:    1,
+		ReconnectGraceSecs: 1,
 		MaxPerTick: 100,
 	})
 	if err != nil {
@@ -94,7 +94,7 @@ func TestExpireStaleQueuedTasksSkipsPausedAgents(t *testing.T) {
 		t.Fatalf("resume agent: %v", err)
 	}
 	expired, err = queries.ExpireStaleQueuedTasks(ctx, db.ExpireStaleQueuedTasksParams{
-		TtlSecs:    1,
+		ReconnectGraceSecs: 1,
 		MaxPerTick: 100,
 	})
 	if err != nil {

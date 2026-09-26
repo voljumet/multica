@@ -32,11 +32,13 @@ import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
+import { useT } from "@/lib/i18n";
 
 export default function PinsTab() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const userId = useAuthStore((s) => s.user?.id ?? null);
+  const { t } = useT("workspace");
 
   const { data, isLoading, error, refetch, isRefetching } = useQuery(
     pinListOptions(wsId, userId),
@@ -57,18 +59,18 @@ export default function PinsTab() {
       ) : error ? (
         <View className="flex-1 px-4 gap-3 pt-4">
           <Text className="text-sm text-destructive">
-            Failed to load pins:{" "}
-            {error instanceof Error ? error.message : "unknown error"}
+            {t("pins.errors.load_failed", {
+              message: error instanceof Error ? error.message : "unknown",
+            })}
           </Text>
           <Button variant="outline" onPress={() => refetch()}>
-            <Text>Retry</Text>
+            <Text>{t("common:actions.retry")}</Text>
           </Button>
         </View>
       ) : pins.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
           <Text className="text-sm text-muted-foreground text-center">
-            No pins yet. Pin an issue or project from its actions menu to
-            surface it here.
+            {t("pins.empty")}
           </Text>
         </View>
       ) : (
@@ -167,8 +169,8 @@ function ProjectPinRow({
 function SkeletonRow() {
   return (
     <View className="px-4 py-3 flex-row items-center gap-3">
-      <View className="size-5 rounded bg-muted" />
-      <View className="flex-1 h-4 rounded bg-muted" />
+      <View className="size-5 rounded-xs bg-muted" />
+      <View className="flex-1 h-4 rounded-xs bg-muted" />
     </View>
   );
 }
@@ -182,11 +184,16 @@ function MissingPinRow({
 }) {
   const { colorScheme } = useColorScheme();
   const deletePin = useDeletePin();
+  const { t } = useT("workspace");
   return (
     <Pressable
       onPress={() => deletePin.mutate({ itemType, itemId })}
       className="px-4 py-3 flex-row items-center gap-3 active:bg-secondary opacity-60"
-      accessibilityLabel={`Unavailable ${itemType}, tap to unpin`}
+      accessibilityLabel={
+        itemType === "issue"
+          ? t("pins.unavailable_issue")
+          : t("pins.unavailable_project")
+      }
     >
       <Ionicons
         name="alert-circle-outline"
@@ -194,7 +201,9 @@ function MissingPinRow({
         color={THEME[colorScheme].mutedForeground}
       />
       <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={1}>
-        Unavailable {itemType} — tap to unpin
+        {itemType === "issue"
+          ? t("pins.unavailable_issue")
+          : t("pins.unavailable_project")}
       </Text>
     </Pressable>
   );

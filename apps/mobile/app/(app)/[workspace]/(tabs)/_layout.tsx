@@ -33,6 +33,7 @@ import {
   useChatUnreadMessageCount,
 } from "@/lib/unread-counts";
 import { MoreTabDropdownAnchor } from "@/components/nav/more-tab-dropdown";
+import { useT } from "@/lib/i18n";
 
 // Only override backgroundColor — @react-navigation/elements Badge internally
 // sets borderRadius = size/2, height = size, minWidth = size, so a single
@@ -45,7 +46,8 @@ const BADGE_STYLE = {
 
 export default function TabsLayout() {
   const { colorScheme } = useColorScheme();
-  const t = THEME[colorScheme];
+  const theme = THEME[colorScheme];
+  const { t } = useT("navigation");
 
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const inboxUnread = useInboxUnreadCount(wsId);
@@ -68,9 +70,9 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: t.foreground,
-          tabBarInactiveTintColor: t.mutedForeground,
-          tabBarStyle: { backgroundColor: t.background },
+          tabBarActiveTintColor: theme.foreground,
+          tabBarInactiveTintColor: theme.mutedForeground,
+          tabBarStyle: { backgroundColor: theme.background },
           tabBarLabelStyle: { fontSize: 11 },
         }}
       >
@@ -116,7 +118,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="chat"
           options={{
-            title: "Chat",
+            title: t("tabs.chat"),
             tabBarBadge: chatBadge,
             tabBarBadgeStyle: BADGE_STYLE,
             tabBarIcon: ({ color, size, focused }) => (
@@ -131,7 +133,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="more"
           options={{
-            title: "More",
+            title: t("tabs.more"),
             tabBarBadge: inboxBadge,
             tabBarBadgeStyle: BADGE_STYLE,
             tabBarIcon: ({ color, size }) => (

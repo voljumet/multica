@@ -14,10 +14,12 @@ import {
   type DueDatePickerBodyHandle,
 } from "@/components/issue/pickers/due-date-picker-body";
 import { useNewIssueDraftStore } from "@/data/stores/new-issue-draft-store";
+import { useT } from "@/lib/i18n";
 
 export default function NewIssueDueDatePickerRoute() {
   const dueDate = useNewIssueDraftStore((s) => s.dueDate);
   const setDueDate = useNewIssueDraftStore((s) => s.setDueDate);
+  const { t } = useT("issues");
   const ref = useRef<DueDatePickerBodyHandle>(null);
 
   return (
@@ -33,7 +35,9 @@ export default function NewIssueDueDatePickerRoute() {
               hitSlop={6}
               className="px-2 py-1 rounded-md active:bg-secondary"
             >
-              <Text className="text-sm text-destructive">Clear</Text>
+              <Text className="text-sm text-destructive">
+                {t("picker.clear")}
+              </Text>
             </Pressable>
           ) : null}
           <Pressable
@@ -45,7 +49,9 @@ export default function NewIssueDueDatePickerRoute() {
             hitSlop={6}
             className="px-2 py-1 rounded-md active:bg-secondary"
           >
-            <Text className="text-sm font-medium text-primary">Done</Text>
+            <Text className="text-sm font-medium text-primary">
+              {t("common:actions.done")}
+            </Text>
           </Pressable>
         </View>
       </View>

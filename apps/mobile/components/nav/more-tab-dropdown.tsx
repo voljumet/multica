@@ -54,6 +54,7 @@ import { WorkspaceAvatar } from "@/components/workspace/workspace-avatar";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { useT } from "@/lib/i18n";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -66,7 +67,7 @@ import { cn } from "@/lib/utils";
 const TAB_BAR_HEIGHT = 49;
 
 interface NavItem {
-  label: string;
+  labelKey: "more_menu.inbox" | "more_menu.my_issues";
   /** SF Symbol name, rendered via expo-image `source: "sf:<name>"`. */
   icon: string;
   /** Path under /:slug/ — final href is `/${slug}${path}`. */
@@ -74,8 +75,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Inbox", icon: "tray", path: "/more/inbox" },
-  { label: "My Issues", icon: "checklist", path: "/more/my-issues" },
+  { labelKey: "more_menu.inbox", icon: "tray", path: "/more/inbox" },
+  { labelKey: "more_menu.my_issues", icon: "checklist", path: "/more/my-issues" },
 ];
 
 export function MoreTabDropdownAnchor({
@@ -88,7 +89,8 @@ export function MoreTabDropdownAnchor({
   const user = useAuthStore((s) => s.user);
   const pathname = usePathname();
   const { colorScheme } = useColorScheme();
-  const t = THEME[colorScheme];
+  const { t } = useT("navigation");
+  const theme = THEME[colorScheme];
   const currentWorkspace = useCurrentWorkspace(slug);
 
   const isActive = (path: string) => {
@@ -131,7 +133,7 @@ export function MoreTabDropdownAnchor({
           <UserCard
             user={user}
             onPress={() => slug && router.push(`/${slug}/more/settings`)}
-            chevronTint={t.mutedForeground}
+            chevronTint={theme.mutedForeground}
           />
 
           <DropdownMenuSeparator />
@@ -142,7 +144,7 @@ export function MoreTabDropdownAnchor({
             onPress={() =>
               slug && router.push(`/${slug}/switch-workspace`)
             }
-            chevronTint={t.mutedForeground}
+            chevronTint={theme.mutedForeground}
           />
 
           <DropdownMenuSeparator />
@@ -151,7 +153,7 @@ export function MoreTabDropdownAnchor({
             <DropdownMenuItem
               key={item.path}
               onPress={() => slug && router.push(`/${slug}${item.path}`)}
-              accessibilityLabel={item.label}
+              accessibilityLabel={t(item.labelKey)}
               className={cn(
                 "h-9 gap-3",
                 isActive(item.path) && "bg-secondary",
@@ -159,10 +161,10 @@ export function MoreTabDropdownAnchor({
             >
               <ExpoImage
                 source={`sf:${item.icon}`}
-                tintColor={t.foreground}
+                tintColor={theme.foreground}
                 style={{ width: 18, height: 18 }}
               />
-              <Text className="text-sm text-foreground">{item.label}</Text>
+              <Text className="text-sm text-foreground">{t(item.labelKey)}</Text>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -187,11 +189,12 @@ function UserCard({
   chevronTint: string;
 }) {
   const initial = (user?.name ?? user?.email ?? "U").charAt(0).toUpperCase();
+  const { t } = useT("navigation");
   return (
     <DropdownMenuItem
       onPress={onPress}
       className="h-12 gap-3"
-      accessibilityLabel="Account settings"
+      accessibilityLabel={t("more_menu.account_settings")}
     >
       {user?.avatar_url ? (
         <Image
@@ -256,6 +259,7 @@ function WorkspaceCard({
   onPress: () => void;
   chevronTint: string;
 }) {
+  const { t } = useT("navigation");
   const { data } = useQuery(workspaceListOptions());
   const canSwitch = (data?.length ?? 0) > 1;
 
@@ -265,11 +269,13 @@ function WorkspaceCard({
       disabled={!canSwitch}
       className="h-12 gap-3"
       accessibilityLabel={
-        canSwitch ? "Switch workspace" : currentWorkspaceName ?? "Workspace"
+        canSwitch
+          ? t("settings:workspace.switch")
+          : currentWorkspaceName ?? t("settings:account.workspace")
       }
     >
       <WorkspaceAvatar
-        name={currentWorkspaceName ?? "Workspace"}
+        name={currentWorkspaceName ?? t("settings:account.workspace")}
         avatarUrl={currentWorkspaceAvatarUrl}
         size={32}
       />
@@ -278,7 +284,7 @@ function WorkspaceCard({
           className="text-sm font-medium text-foreground"
           numberOfLines={1}
         >
-          {currentWorkspaceName ?? "Workspace"}
+          {currentWorkspaceName ?? t("settings:account.workspace")}
         </Text>
       </View>
       {canSwitch ? (

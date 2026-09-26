@@ -23,12 +23,14 @@ import {
   issueTasksOptions,
 } from "@/data/queries/issues";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { useT } from "@/lib/i18n";
 
 const PAST_STATUS_ORDER: Record<AgentTask["status"], number> = {
   failed: 0,
   cancelled: 1,
   completed: 2,
   queued: 99,
+  deferred: 99,
   dispatched: 99,
   waiting_local_directory: 99,
   running: 99,
@@ -37,6 +39,7 @@ const PAST_STATUS_ORDER: Record<AgentTask["status"], number> = {
 export default function IssueRunsRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { t } = useT("issues");
   const { data: activeTasks = [] } = useQuery(
     issueActiveTasksOptions(wsId, id),
   );
@@ -76,20 +79,20 @@ export default function IssueRunsRoute() {
         {isEmpty ? (
           <View className="py-12 items-center">
             <Text className="text-sm text-muted-foreground text-center">
-              No agent runs on this issue yet.
+              {t("runs.empty")}
             </Text>
           </View>
         ) : (
           <View className="gap-3">
             {active.length > 0 ? (
-              <Section title="Active">
+              <Section title={t("runs.active")}>
                 {active.map((task) => (
                   <RunRow key={task.id} task={task} issueId={id} />
                 ))}
               </Section>
             ) : null}
             {past.length > 0 ? (
-              <Section title="Past">
+              <Section title={t("runs.past")}>
                 {past.map((task) => (
                   <RunRow key={task.id} task={task} issueId={id} />
                 ))}

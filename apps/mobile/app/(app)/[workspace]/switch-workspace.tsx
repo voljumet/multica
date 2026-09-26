@@ -35,23 +35,25 @@ import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export default function SwitchWorkspaceRoute() {
   const activeSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const { colorScheme } = useColorScheme();
-  const t = THEME[colorScheme];
+  const theme = THEME[colorScheme];
   const { data, isLoading } = useQuery(workspaceListOptions());
+  const { t } = useT("workspace");
 
   const onSelect = (ws: Workspace) => {
     if (ws.slug === activeSlug) return;
     Alert.alert(
-      "Switch workspace",
-      `Switch to "${ws.name}"?`,
+      t("switch.title"),
+      t("switch.message", { name: ws.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common:actions.cancel"), style: "cancel" },
         {
-          text: "Switch",
+          text: t("switch.confirm"),
           onPress: () => {
             router.dismiss();
             router.replace(`/${ws.slug}/inbox`);
@@ -75,7 +77,7 @@ export default function SwitchWorkspaceRoute() {
               workspace={ws}
               active={ws.slug === activeSlug}
               onPress={() => onSelect(ws)}
-              iconTint={t.foreground}
+              iconTint={theme.foreground}
             />
           ))}
         </ScrollView>
@@ -95,14 +97,15 @@ function WorkspaceRow({
   onPress: () => void;
   iconTint: string;
 }) {
+  const { t } = useT("workspace");
   return (
     <Pressable
       onPress={onPress}
       disabled={active}
       accessibilityLabel={
         active
-          ? `${workspace.name}, current workspace`
-          : `Switch to ${workspace.name}`
+          ? t("switch.current_a11y", { name: workspace.name })
+          : t("switch.switch_a11y", { name: workspace.name })
       }
       className={cn(
         "flex-row items-center gap-3 px-4 py-3 active:bg-secondary",
