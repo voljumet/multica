@@ -1,45 +1,8 @@
-export type GitLabMRState = "open" | "closed" | "merged" | "locked";
-
-export interface GitLabConnection {
-  id: string;
-  workspace_id: string;
-  namespace: string;
-  namespace_type: "group" | "user";
-  avatar_url: string | null;
-  created_at: string;
-  /** Per-connection X-Gitlab-Token value; only present for owners/admins. */
-  webhook_secret?: string | null;
-  /** Multica user whose GitLab OAuth grant backs this connection. */
-  connected_by_id?: string | null;
-}
-
-export interface GitLabMergeRequest {
-  id: string;
-  workspace_id: string;
-  project_path: string;
-  mr_iid: number;
-  title: string;
-  state: GitLabMRState;
-  html_url: string;
-  source_branch: string | null;
-  author_username: string | null;
-  author_avatar_url: string | null;
-  merged_at: string | null;
-  closed_at: string | null;
-  mr_created_at: string;
-  mr_updated_at: string;
-}
-
-export interface ListGitLabConnectionsResponse {
-  connections: GitLabConnection[];
-  configured: boolean;
-  can_manage?: boolean;
-  gitlab_url?: string;
-}
-
-export interface GitLabUserLink {
-  gitlab_username: string | null;
-}
+// GitLab OAuth connection/user-link/merge-request-mirroring types are gone —
+// that auth, connection, and MR/CI mirroring now goes through the generic VCS
+// integration (packages/core/types/vcs.ts). Only label-triggered issue sync
+// remains GitLab-specific; see packages/core/gitlab and
+// server/internal/handler/gitlab_issue_sync.go.
 
 export interface GitLabIssue {
   gl_issue_iid: number;

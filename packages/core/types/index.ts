@@ -217,14 +217,7 @@ export type {
   ConnectVCSRequest,
   ConnectVCSResponse,
 } from "./vcs";
-export type {
-  GitLabMRState,
-  GitLabConnection,
-  GitLabMergeRequest,
-  GitLabIssue,
-  GitLabUserLink,
-  ListGitLabConnectionsResponse,
-} from "./gitlab";
+export type { GitLabIssue } from "./gitlab";
 export type {
   LarkInstallation,
   ListLarkInstallationsResponse,

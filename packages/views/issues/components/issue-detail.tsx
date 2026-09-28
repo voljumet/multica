@@ -103,7 +103,6 @@ import { ExecutionLogSection } from "./execution-log-section";
 import { WakeupsSection } from "./wakeups-section";
 import { QuickActionsSection } from "./quick-actions-section";
 import { IssueTokenUsageSection, foldRuns } from "./issue-token-usage-section";
-import { MergeRequestList } from "./merge-request-list";
 import { GitLabIssueBadge } from "./gitlab-issue-badge";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
@@ -2808,7 +2807,6 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           onOpenChange={setPullRequestsOpen}
         />
       )}
-      {gitlabSettings.mrSidebar && <MergeRequestList issueId={id} />}
       {gitlabSettings.issueSync && <GitLabIssueBadge issueId={id} />}
 
       {/* Execution log — active runs + collapsed past runs, each carrying its

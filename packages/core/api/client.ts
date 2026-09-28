@@ -175,11 +175,7 @@ import type {
   ListVCSConnectionsResponse,
   ConnectVCSRequest,
   ConnectVCSResponse,
-  GitLabConnection,
-  GitLabMergeRequest,
   GitLabIssue,
-  GitLabUserLink,
-  ListGitLabConnectionsResponse,
   ListLarkInstallationsResponse,
   BeginLarkInstallResponse,
   LarkInstallStatusResponse,
@@ -4823,31 +4819,9 @@ export class ApiClient {
     );
   }
 
-  // GitLab integration
-  async listGitLabConnections(workspaceId: string): Promise<ListGitLabConnectionsResponse> {
-    return this.fetch(`/api/workspaces/${workspaceId}/gitlab/connections`);
-  }
-
-  async deleteGitLabConnection(workspaceId: string, connectionId: string): Promise<void> {
-    await this.fetch(`/api/workspaces/${workspaceId}/gitlab/connections/${connectionId}`, {
-      method: "DELETE",
-    });
-  }
-
-  async rotateGitLabConnectionWebhookSecret(
-    workspaceId: string,
-    connectionId: string,
-  ): Promise<GitLabConnection> {
-    return this.fetch(
-      `/api/workspaces/${workspaceId}/gitlab/connections/${connectionId}/rotate-webhook-secret`,
-      { method: "POST" },
-    );
-  }
-
-  async listIssueMergeRequests(issueId: string): Promise<{ merge_requests: GitLabMergeRequest[] }> {
-    return this.fetch(`/api/issues/${issueId}/merge-requests`);
-  }
-
+  // GitLab issue sync — linking a Multica issue to a GitLab issue synced via
+  // the label trigger. Auth/connection management now lives entirely under
+  // the generic VCS integration above (vcs_connection, provider="gitlab").
   async getGitLabIssue(issueId: string): Promise<GitLabIssue> {
     return this.fetch(`/api/issues/${issueId}/gitlab-issue`);
   }
@@ -4865,21 +4839,6 @@ export class ApiClient {
 
   async unlinkGitLabIssue(issueId: string): Promise<void> {
     return this.fetch(`/api/issues/${issueId}/gitlab-issue`, { method: "DELETE" });
-  }
-
-  async getGitLabUserLink(workspaceId: string): Promise<GitLabUserLink> {
-    return this.fetch(`/api/workspaces/${workspaceId}/gitlab/user-link`);
-  }
-
-  async linkGitLabUser(workspaceId: string, gitlabUsername: string): Promise<GitLabUserLink> {
-    return this.fetch(`/api/workspaces/${workspaceId}/gitlab/user-link`, {
-      method: "POST",
-      body: JSON.stringify({ gitlab_username: gitlabUsername }),
-    });
-  }
-
-  async unlinkGitLabUser(workspaceId: string): Promise<void> {
-    await this.fetch(`/api/workspaces/${workspaceId}/gitlab/user-link`, { method: "DELETE" });
   }
 
   // Lark integration

@@ -46,7 +46,7 @@ import { Textarea } from "@multica/ui/components/ui/textarea";
 import { useScrollFade } from "@multica/ui/hooks/use-scroll-fade";
 import { cn } from "@multica/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { gitlabConnectionsOptions } from "@multica/core/gitlab/queries";
+import { vcsConnectionsOptions } from "@multica/core/vcs";
 import { openExternal } from "../../platform";
 import { RuntimeLocalSkillImportPanel } from "./runtime-local-skill-import-panel";
 import { useT } from "../../i18n";
@@ -300,11 +300,9 @@ function UrlForm({
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { data: gitlabData } = useQuery(gitlabConnectionsOptions(wsId));
-  const gitlabHost = gitlabData?.gitlab_url
-    ? new URL(gitlabData.gitlab_url).hostname.toLowerCase()
-    : "";
-  const gitlabConfigured = gitlabData?.configured === true;
+  const { data: vcsData } = useQuery(vcsConnectionsOptions(wsId));
+  const gitlabConnection = vcsData?.connections?.find((c) => c.provider === "gitlab");
+  const gitlabHost = gitlabConnection ? new URL(gitlabConnection.instance_url).hostname.toLowerCase() : "";
   const source = detectUrlSource(url, gitlabHost);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fadeStyle = useScrollFade(scrollRef);
@@ -365,7 +363,7 @@ function UrlForm({
           <p className="mb-2 text-caption text-muted-foreground">
             {t(($) => $.create.url.supported_sources)}
           </p>
-          <div className={`grid gap-2 ${gitlabConfigured ? "grid-cols-4" : "grid-cols-3"}`}>
+          <div className={`grid gap-2 ${gitlabConnection ? "grid-cols-4" : "grid-cols-3"}`}>
             <SourceCard
               label="ClawHub"
               exampleHost="clawhub.ai/owner/skill"
@@ -384,11 +382,11 @@ function UrlForm({
               browseUrl="https://github.com"
               active={source === "github"}
             />
-            {gitlabConfigured && gitlabData?.gitlab_url && (
+            {gitlabConnection && (
               <SourceCard
                 label="GitLab"
                 exampleHost={`${gitlabHost}/group/repo`}
-                browseUrl={gitlabData.gitlab_url}
+                browseUrl={gitlabConnection.instance_url}
                 active={source === "gitlab"}
               />
             )}

@@ -86,7 +86,7 @@ func (h *Handler) fetchImportedSkillFromOrigin(ctx context.Context, httpClient *
 	if !ok || origin.SourceURL == "" {
 		return nil, errSkillNotRefreshable
 	}
-	source, normalized, err := detectImportSource(origin.SourceURL)
+	source, normalized, err := detectImportSource(origin.SourceURL, h.gitlabHostForWorkspace(ctx, workspaceID))
 	if err != nil || source != expected {
 		return nil, errSkillNotRefreshable
 	}

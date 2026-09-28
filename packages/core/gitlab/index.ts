@@ -1,15 +1,5 @@
+export { gitlabKeys, issueGitLabIssueOptions } from "./queries";
 export {
-  gitlabKeys,
-  gitlabConnectionsOptions,
-  gitlabUserLinkOptions,
-  useUpsertGitLabUserLink,
-  useDeleteGitLabUserLink,
-  issueMergeRequestsOptions,
-  issueGitLabIssueOptions,
-} from "./queries";
-export {
-  useDeleteGitLabConnection,
-  useRotateGitLabWebhookSecret,
   useLinkGitLabIssue,
   useUnlinkGitLabIssue,
   deriveGitLabSettings,
@@ -17,4 +7,3 @@ export {
 } from "./settings";
 export type { GitLabSettings } from "./settings";
 export { useGitLabSettings } from "./use-gitlab-settings";
-export { buildGitLabWebhookUrl } from "./webhook-url";

@@ -7,17 +7,6 @@ import (
 	"testing"
 )
 
-func TestGitlabConfiguredHost(t *testing.T) {
-	t.Setenv("GITLAB_URL", "https://gitlab.company.com")
-	if got := gitlabConfiguredHost(); got != "gitlab.company.com" {
-		t.Fatalf("got %q, want %q", got, "gitlab.company.com")
-	}
-
-	t.Setenv("GITLAB_URL", "")
-	if got := gitlabConfiguredHost(); got != "" {
-		t.Fatalf("expected empty, got %q", got)
-	}
-}
 
 func TestParseGitLabURL(t *testing.T) {
 	cases := []struct {
@@ -101,9 +90,7 @@ func TestParseGitLabURL(t *testing.T) {
 }
 
 func TestDetectImportSource_GitLab(t *testing.T) {
-	t.Setenv("GITLAB_URL", "https://gitlab.company.com")
-
-	source, normalized, err := detectImportSource("https://gitlab.company.com/group/repo/-/tree/main/skill")
+	source, normalized, err := detectImportSource("https://gitlab.company.com/group/repo/-/tree/main/skill", "gitlab.company.com")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,11 +103,9 @@ func TestDetectImportSource_GitLab(t *testing.T) {
 }
 
 func TestDetectImportSource_GitLabNotConfigured(t *testing.T) {
-	t.Setenv("GITLAB_URL", "")
-
-	_, _, err := detectImportSource("https://gitlab.company.com/group/repo")
+	_, _, err := detectImportSource("https://gitlab.company.com/group/repo", "")
 	if err == nil {
-		t.Fatal("expected error when GITLAB_URL not set")
+		t.Fatal("expected error when workspace has no gitlab connection")
 	}
 }
 
@@ -150,8 +135,6 @@ func TestFetchFromGitLab(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-
-	t.Setenv("GITLAB_URL", srv.URL)
 
 	skill, err := fetchFromGitLab(srv.Client(), "test-token", srv.URL+"/group/repo")
 	if err != nil {
@@ -200,8 +183,6 @@ func TestFetchFromGitLab_SkillDir(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-
-	t.Setenv("GITLAB_URL", srv.URL)
 
 	skill, err := fetchFromGitLab(srv.Client(), "tok", srv.URL+"/group/repo/-/tree/main/skills/foo")
 	if err != nil {

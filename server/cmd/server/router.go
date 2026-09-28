@@ -1292,18 +1292,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		slog.Info("vcs integration disabled (MULTICA_VCS_SECRET_KEY not set)")
 	}
 
-	// GitLab integration token encryption. Nil when GITLAB_SECRET_KEY is unset;
-	// the GitLab OAuth handlers return a clear error in that case.
-	if gitlabKey, err := secretbox.LoadKey("GITLAB_SECRET_KEY"); err == nil {
-		box, err := secretbox.New(gitlabKey)
-		if err != nil {
-			slog.Error("gitlab: secretbox.New failed; GitLab OAuth disabled", "error", err)
-		} else {
-			h.GitLabBox = box
-			slog.Info("gitlab integration enabled")
-		}
-	}
-
 	// Plugin secrets use a dedicated deployment key. Keeping this separate from
 	// VCS and channel secrets gives operators an isolated rotation and blast
 	// radius; without it, saving a `secret` config field fails closed rather
@@ -1528,8 +1516,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// the connection id in the path selects the workspace, provider, and
 	// decryption secret.
 	r.Post("/api/webhooks/vcs/{connectionId}", h.HandleVCSWebhook)
-	// GitLab OAuth callback (no Multica auth — browser redirect from GitLab).
-	r.Get("/api/gitlab/setup", h.GitLabSetupCallback)
 	// Stripe webhook (no Multica auth — Stripe signs the raw body
 	// with a shared secret, the multica-cloud upstream verifies. We
 	// only forward the bytes + the Stripe-Signature header; see
@@ -1799,22 +1785,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/vcs/connections/{connectionId}", h.DeleteVCSConnection)
 				})
 
-				// GitLab integration — listing and per-member identity are member-visible;
-				// connect/disconnect require admin.
-				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireWorkspaceMemberFromURL(queries, "id"))
-					r.Get("/gitlab/connections", h.ListGitLabConnections)
-					r.Get("/gitlab/user-link", h.GetGitLabUserLink)
-					r.Post("/gitlab/user-link", h.LinkGitLabUser)
-					r.Delete("/gitlab/user-link", h.UnlinkGitLabUser)
-				})
-				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
-					r.Get("/gitlab/connect", h.GitLabConnect)
-					r.Delete("/gitlab/connections/{connectionId}", h.DeleteGitLabConnection)
-					r.Post("/gitlab/connections/{connectionId}/rotate-webhook-secret", h.RotateGitLabConnectionWebhookSecret)
-				})
-
 				// Lark integration. Every endpoint here only requires
 				// workspace membership at the router; the real authorization
 				// is per-agent and enforced inside each handler via
@@ -2064,7 +2034,6 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Put("/properties/{propertyId}", h.SetIssueProperty)
 					r.Delete("/properties/{propertyId}", h.DeleteIssueProperty)
 					r.Get("/pull-requests", h.ListPullRequestsForIssue)
-					r.Get("/merge-requests", h.ListMergeRequestsForIssue)
 					r.Get("/gitlab-issue", h.GetGitLabIssueForIssue)
 					r.Put("/gitlab-issue", h.LinkGitLabIssueForIssue)
 					r.Delete("/gitlab-issue", h.UnlinkGitLabIssueForIssue)

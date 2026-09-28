@@ -946,9 +946,13 @@ const (
 	sourceGitLab
 )
 
-// detectImportSource determines the source from a URL.
+// detectImportSource determines the source from a URL. gitlabHost is the
+// hostname of the workspace's connected GitLab instance (from its
+// gitlab-provider vcs_connection), or "" if it has none — only that host
+// matches sourceGitLab, so a pasted URL for an unconnected instance falls
+// through to the unsupported-source error below.
 // Returns the source and a normalized URL (with scheme).
-func detectImportSource(raw string) (importSource, string, error) {
+func detectImportSource(raw, gitlabHost string) (importSource, string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return 0, "", fmt.Errorf("empty URL")
@@ -972,7 +976,7 @@ func detectImportSource(raw string) (importSource, string, error) {
 		return sourceClawHub, normalized, nil
 	case host == "github.com" || host == "www.github.com":
 		return sourceGitHub, normalized, nil
-	case host == gitlabConfiguredHost() && gitlabConfiguredHost() != "":
+	case host == gitlabHost && gitlabHost != "":
 		return sourceGitLab, normalized, nil
 	default:
 		// If no host (bare slug), default to clawhub
@@ -2347,7 +2351,7 @@ func (h *Handler) ImportSkill(w http.ResponseWriter, r *http.Request) {
 		strategy = importOnConflictFail
 	}
 
-	source, normalized, err := detectImportSource(req.URL)
+	source, normalized, err := detectImportSource(req.URL, h.gitlabHostForWorkspace(r.Context(), workspaceUUID))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

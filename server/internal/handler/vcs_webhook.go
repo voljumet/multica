@@ -149,8 +149,14 @@ func (h *Handler) HandleVCSWebhook(w http.ResponseWriter, r *http.Request) {
 		} else {
 			h.mirrorVCSCIStatus(r.Context(), conn, st)
 		}
-	default:
-		// Acknowledge unmodelled events so the provider doesn't flag the hook.
+	case vcs.EventOther:
+		// GitLab's Issue Hook has no shared representation across providers
+		// (Forgejo/Gitea don't send it in this shape) — handled as a
+		// Multica-specific addon rather than a new vcs.EventKind. See
+		// gitlab_issue_sync.go for why this lives in its own file.
+		if conn.Provider == string(vcs.KindGitLab) && r.Header.Get("X-Gitlab-Event") == "Issue Hook" {
+			h.handleGitLabIssueSyncWebhook(r.Context(), conn, body)
+		}
 	}
 	w.WriteHeader(http.StatusAccepted)
 }

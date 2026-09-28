@@ -1088,7 +1088,7 @@ func TestParseGitHubURL(t *testing.T) {
 }
 
 func TestDetectImportSource_RecognizesGitHub(t *testing.T) {
-	src, _, err := detectImportSource("https://github.com/acme/skill")
+	src, _, err := detectImportSource("https://github.com/acme/skill", "")
 	if err != nil {
 		t.Fatalf("detectImportSource: %v", err)
 	}

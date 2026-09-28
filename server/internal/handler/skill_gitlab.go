@@ -2,17 +2,14 @@ package handler
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	skillpkg "github.com/multica-ai/multica/server/internal/skill"
@@ -24,14 +21,16 @@ type gitlabSpec struct {
 	skillDir  string // relative path within repo, "" for root
 }
 
-// gitlabConfiguredHost returns the lowercased hostname from GITLAB_URL,
-// or "" when GITLAB_URL is unset or unparseable.
-func gitlabConfiguredHost() string {
-	base := strings.TrimRight(os.Getenv("GITLAB_URL"), "/")
-	if base == "" {
+// gitlabHostForWorkspace returns the lowercased hostname of the workspace's
+// gitlab-provider vcs_connection, or "" when the workspace has none. Used to
+// recognize a pasted URL as pointing at "the" self-hosted GitLab instance this
+// workspace is connected to (each workspace connects at most one).
+func (h *Handler) gitlabHostForWorkspace(ctx context.Context, workspaceID pgtype.UUID) string {
+	conn, err := h.firstGitLabVCSConnection(ctx, workspaceID)
+	if err != nil {
 		return ""
 	}
-	u, err := url.Parse(base)
+	u, err := url.Parse(strings.TrimRight(conn.InstanceUrl, "/"))
 	if err != nil || u.Hostname() == "" {
 		return ""
 	}
@@ -122,36 +121,35 @@ func gitlabProjectAPIPath(namespace string) string {
 	return url.PathEscape(namespace)
 }
 
-// gitlabAccessTokenForWorkspace retrieves and decrypts the workspace's GitLab
-// OAuth access token, refreshing it first if it has expired.
+// gitlabAccessTokenForWorkspace retrieves and decrypts the access token on the
+// workspace's gitlab-provider vcs_connection.
 func (h *Handler) gitlabAccessTokenForWorkspace(ctx context.Context, workspaceUUID pgtype.UUID) (string, error) {
-	conn, err := h.Queries.GetFirstGitLabConnectionByWorkspace(ctx, workspaceUUID)
+	conn, err := h.firstGitLabVCSConnection(ctx, workspaceUUID)
 	if err != nil {
 		return "", fmt.Errorf("gitlab skill: no GitLab connection for workspace: %w", err)
 	}
-	if conn.TokenExpiresAt.Valid && conn.TokenExpiresAt.Time.Before(time.Now()) {
-		return h.refreshGitLabToken(ctx, conn)
-	}
-	tokenBytes, err := base64.StdEncoding.DecodeString(conn.AccessToken)
-	if err != nil {
-		return "", fmt.Errorf("gitlab skill: decode token: %w", err)
-	}
-	plain, err := h.GitLabBox.Open(tokenBytes)
+	token, err := h.gitlabAccessTokenFromVCSConnection(conn)
 	if err != nil {
 		return "", fmt.Errorf("gitlab skill: decrypt token: %w", err)
 	}
-	return string(plain), nil
+	return token, nil
 }
 
 // fetchFromGitLab fetches a skill from a self-hosted GitLab repo using the
-// provided OAuth bearer token. Mirrors fetchFromGitHub in structure.
+// provided access token. The API base is derived from rawURL's own host, so
+// this works against whichever GitLab instance the workspace is connected to
+// (no single global GITLAB_URL). Mirrors fetchFromGitHub in structure.
 func fetchFromGitLab(httpClient *http.Client, token, rawURL string) (*importedSkill, error) {
 	spec, err := parseGitLabURL(rawURL)
 	if err != nil {
 		return nil, err
 	}
 
-	apiBase := strings.TrimRight(os.Getenv("GITLAB_URL"), "/") + "/api/v4"
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("gitlab skill: invalid source URL: %s", rawURL)
+	}
+	apiBase := parsed.Scheme + "://" + parsed.Host + "/api/v4"
 	encodedNS := gitlabProjectAPIPath(spec.namespace)
 
 	ref := spec.ref
