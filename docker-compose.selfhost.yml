@@ -226,7 +226,7 @@ services:
     restart: unless-stopped
     networks:
       - default
-      - shared-network
+      - cloudflare-edge
 
   frontend:
     image: ${MULTICA_WEB_IMAGE:-ghcr.io/multica-ai/multica-web}:${MULTICA_IMAGE_TAG:-latest}
@@ -244,12 +244,12 @@ services:
     restart: unless-stopped
     networks:
       - default
-      - shared-network
+      - cloudflare-edge
 
 volumes:
   pgdata:
   backend_uploads:
 
 networks:
-  shared-network:
+  cloudflare-edge:
     external: true
